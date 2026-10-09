@@ -1,6 +1,7 @@
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
+import '../models/ledger_categories.dart';
 import '../models/ledger_entry.dart';
 
 class LedgerDatabase {
@@ -207,6 +208,69 @@ class LedgerDatabase {
       }
       for (final category in categories) {
         batch.insert('custom_categories', category);
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
+  Future<void> importSpreadsheetData({
+    required List<LedgerEntry> entries,
+    required Map<String, int> monthlyBudgets,
+    required Map<EntryType, Set<String>> customCategories,
+  }) async {
+    for (final entry in entries) {
+      if (entry.amountCents <= 0 ||
+          entry.category.trim().isEmpty ||
+          entry.category.runes.length > 16 ||
+          entry.note.runes.length > 60) {
+        throw const FormatException('导入账单包含无效数据，未写入任何内容。');
+      }
+    }
+    for (final budget in monthlyBudgets.entries) {
+      if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(budget.key) ||
+          budget.value <= 0) {
+        throw const FormatException('导入预算包含无效数据，未写入任何内容。');
+      }
+    }
+    final categoriesToAdd = <EntryType, Set<String>>{
+      for (final type in EntryType.values)
+        type: {
+          ...?customCategories[type],
+          for (final entry in entries)
+            if (entry.type == type &&
+                !LedgerCategories.builtIns(type).contains(entry.category))
+              entry.category,
+        },
+    };
+    for (final type in EntryType.values) {
+      for (final category in categoriesToAdd[type]!) {
+        if (category.trim().isEmpty ||
+            category.runes.length > 16 ||
+            LedgerCategories.builtIns(type).contains(category)) {
+          throw const FormatException('导入自定义分类包含无效数据，未写入任何内容。');
+        }
+      }
+    }
+
+    final db = await database;
+    await db.transaction((transaction) async {
+      final batch = transaction.batch();
+      for (final entry in entries) {
+        batch.insert(_tableName, entry.toMap());
+      }
+      for (final budget in monthlyBudgets.entries) {
+        batch.insert('monthly_budgets', {
+          'month': budget.key,
+          'amount_cents': budget.value,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      for (final type in EntryType.values) {
+        for (final category in categoriesToAdd[type]!) {
+          batch.insert('custom_categories', {
+            'type': type.name,
+            'name': category.trim(),
+          }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
       }
       await batch.commit(noResult: true);
     });

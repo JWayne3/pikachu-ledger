@@ -34,6 +34,9 @@ jobs:
       - name: Analyze Dart code
         run: flutter analyze
 
+      - name: Run Flutter tests
+        run: flutter test
+
       - name: Build Android debug APK
         env:
           PIKACHU_APP_CLIENT_ID: ${{ vars.PIKACHU_GITHUB_APP_CLIENT_ID }}

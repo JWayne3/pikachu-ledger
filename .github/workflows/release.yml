@@ -79,6 +79,9 @@ jobs:
       - name: Analyze Dart code
         run: flutter analyze
 
+      - name: Run Flutter tests
+        run: flutter test
+
       - name: Build signed release APK
         env:
           ANDROID_APPLICATION_ID: ${{ vars.ANDROID_APPLICATION_ID || 'io.github.jwayne3.pikachuledger' }}

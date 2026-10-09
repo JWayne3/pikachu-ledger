@@ -11,6 +11,7 @@ import '../models/ledger_entry.dart';
 import 'ledger_statistics_page.dart';
 import '../services/github_backup_service.dart';
 import '../services/github_auth_service.dart';
+import '../services/ledger_excel_service.dart';
 
 class LedgerHomePage extends StatefulWidget {
   const LedgerHomePage({super.key});
@@ -817,6 +818,129 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     }
   }
 
+  Future<void> _exportExcelData() async {
+    try {
+      final snapshot = await _database.createBackupSnapshot();
+      final bytes = LedgerExcelService.encodeSnapshot(snapshot);
+      final now = DateTime.now();
+      final filename =
+          'ledger_data_${now.year}${_twoDigits(now.month)}${_twoDigits(now.day)}.xlsx';
+      final savedFile = await FilePicker.saveFile(
+        dialogTitle: '导出账本数据到 Excel',
+        fileName: filename,
+        type: FileType.custom,
+        allowedExtensions: const ['xlsx'],
+        bytes: Uint8List.fromList(bytes),
+      );
+      if (savedFile != null) _showMessage('Excel 数据已导出');
+    } catch (error) {
+      _showMessage('导出 Excel 失败：$error');
+    }
+  }
+
+  Future<void> _importExcelData() async {
+    try {
+      final file = await FilePicker.pickFile(
+        dialogTitle: '选择 Excel 数据文件',
+        type: FileType.custom,
+        allowedExtensions: const ['xlsx'],
+      );
+      if (file == null) return;
+      final fileLength = await file.length();
+      if (fileLength != null && fileLength > 25 * 1024 * 1024) {
+        throw const FormatException('文件超过 25 MB，请先拆分后再导入。');
+      }
+      final bytes = await file.readAsBytes();
+      if (bytes.length > 25 * 1024 * 1024) {
+        throw const FormatException('文件超过 25 MB，请先拆分后再导入。');
+      }
+      final imported = LedgerExcelService.decode(bytes);
+      final categoryCount = imported.customCategories.values.fold<int>(
+        0,
+        (sum, categories) => sum + categories.length,
+      );
+      if (!mounted) return;
+      final issuePreview = imported.issues
+          .take(3)
+          .map((issue) => issue.toString())
+          .join('\n');
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('导入 Excel 数据？'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '识别到 ${imported.entries.length} 笔账单、'
+                  '${imported.monthlyBudgets.length} 个月预算、'
+                  '$categoryCount 个自定义分类。',
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  '账单会追加到当前账本，不会覆盖现有记录；同一个文件重复导入可能产生重复账单。相同月份的预算会更新，自定义分类会合并。',
+                ),
+                if (imported.issues.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    '另有 ${imported.issues.length} 行格式有误，将跳过。',
+                    style: TextStyle(color: Colors.orange.shade900),
+                  ),
+                  if (issuePreview.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      issuePreview,
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('导入数据'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+
+      await _database.importSpreadsheetData(
+        entries: imported.entries,
+        monthlyBudgets: imported.monthlyBudgets,
+        customCategories: imported.customCategories,
+      );
+      await _loadEntries();
+      final importedParts = <String>[];
+      if (imported.entries.isNotEmpty) {
+        importedParts.add('${imported.entries.length} 笔账单');
+      }
+      if (imported.monthlyBudgets.isNotEmpty) {
+        importedParts.add('${imported.monthlyBudgets.length} 个月预算');
+      }
+      if (categoryCount > 0) importedParts.add('$categoryCount 个自定义分类');
+      final skipped = imported.issues.isEmpty
+          ? ''
+          : '，跳过 ${imported.issues.length} 行无效数据';
+      _showMessage('已导入 ${importedParts.join('、')}$skipped');
+    } on FormatException catch (error) {
+      _showMessage('无法导入 Excel：${error.message}');
+    } catch (error) {
+      _showMessage('导入 Excel 失败：$error');
+    }
+  }
+
   Future<void> _restoreBackup() async {
     try {
       final file = await FilePicker.pickFile(
@@ -923,7 +1047,11 @@ class _LedgerHomePageState extends State<LedgerHomePage>
           PopupMenuButton<String>(
             tooltip: '更多选项',
             onSelected: (value) {
-              if (value == 'export') {
+              if (value == 'exportExcel') {
+                _exportExcelData();
+              } else if (value == 'importExcel') {
+                _importExcelData();
+              } else if (value == 'exportBackup') {
                 _exportBackup();
               } else if (value == 'restore') {
                 _restoreBackup();
@@ -938,12 +1066,32 @@ class _LedgerHomePageState extends State<LedgerHomePage>
             },
             itemBuilder: (context) => const [
               PopupMenuItem(
-                value: 'export',
+                value: 'exportExcel',
+                child: Row(
+                  children: [
+                    Icon(Icons.table_view_outlined),
+                    SizedBox(width: 12),
+                    Text('导出数据（Excel）'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'importExcel',
+                child: Row(
+                  children: [
+                    Icon(Icons.file_open_outlined),
+                    SizedBox(width: 12),
+                    Text('导入数据（Excel）'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'exportBackup',
                 child: Row(
                   children: [
                     Icon(Icons.download_outlined),
                     SizedBox(width: 12),
-                    Text('导出备份'),
+                    Text('导出备份（JSON）'),
                   ],
                 ),
               ),
@@ -953,7 +1101,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                   children: [
                     Icon(Icons.upload_outlined),
                     SizedBox(width: 12),
-                    Text('恢复备份'),
+                    Text('恢复备份（JSON）'),
                   ],
                 ),
               ),
