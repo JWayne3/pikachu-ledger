@@ -1819,6 +1819,65 @@ class _EntryFormState extends State<_EntryForm> {
     });
   }
 
+  Future<void> _manageCustomCategories() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('分类设置'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 320),
+              child: _customCategories.isEmpty
+                  ? const Text('还没有自定义分类。添加后，它会出现在记账分类列表中。')
+                  : ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final category in _customCategories)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              LedgerCategories.icon(category),
+                              color: LedgerCategories.color(category),
+                            ),
+                            title: Text(
+                              category,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: IconButton(
+                              tooltip: '移除分类',
+                              onPressed: () async {
+                                await _removeCustomCategory(category);
+                                if (mounted) setDialogState(() {});
+                              },
+                              icon: const Icon(Icons.delete_outline),
+                            ),
+                          ),
+                      ],
+                    ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('完成'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _chooseOtherCategory(createCustom: true);
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('添加分类'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _chooseDate() async {
     final selected = await showDatePicker(
       context: context,
@@ -1940,8 +1999,35 @@ class _EntryFormState extends State<_EntryForm> {
                   mainAxisSpacing: 4,
                   childAspectRatio: 0.9,
                 ),
-                itemCount: _categories.length,
+                itemCount: _categories.length + 1,
                 itemBuilder: (context, index) {
+                  if (index == _categories.length) {
+                    return Tooltip(
+                      message: '管理自定义分类',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: _manageCustomCategories,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF5F5F5),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.settings_outlined,
+                                size: 24,
+                                color: Colors.grey.shade700,
+                              ),
+                              const SizedBox(height: 5),
+                              const Text('设置', style: TextStyle(fontSize: 11)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }
                   final category = _categories[index];
                   final isCustom = _customCategories.contains(category);
                   final selected = _category == category;
