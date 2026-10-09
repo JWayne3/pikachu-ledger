@@ -32,3 +32,4 @@ flutter:
   assets:
     - assets/sounds/record_ding.wav
     - assets/sounds/selection_ding.wav
+    - assets/sounds/ui_click.wav

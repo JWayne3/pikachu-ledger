@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/ledger_activity_stats.dart';
 import '../models/ledger_categories.dart';
 import '../models/ledger_entry.dart';
+import '../services/tap_sound_service.dart';
 import '../widgets/ledger_charts.dart';
 
 enum LedgerPeriod { week, month, year }
@@ -192,7 +193,10 @@ class _LedgerStatisticsPageState extends State<LedgerStatisticsPage> {
                         )
                         .toList(growable: false),
                     onChanged: (type) {
-                      if (type != null) setState(() => _type = type);
+                      if (type != null) {
+                        TapSoundService.playSelectionDing();
+                        setState(() => _type = type);
+                      }
                     },
                   ),
                   const Spacer(),
@@ -231,14 +235,16 @@ class _LedgerStatisticsPageState extends State<LedgerStatisticsPage> {
         _categoryCard(sortedCategories, amount),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => LedgerPeriodReportPage(
-                entries: widget.entries,
-                initialDate: _anchor,
-                initialPeriod: _period == LedgerPeriod.year
-                    ? LedgerPeriod.year
-                    : LedgerPeriod.month,
+          onPressed: TapSoundService.withUiClick(
+            () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => LedgerPeriodReportPage(
+                  entries: widget.entries,
+                  initialDate: _anchor,
+                  initialPeriod: _period == LedgerPeriod.year
+                      ? LedgerPeriod.year
+                      : LedgerPeriod.month,
+                ),
               ),
             ),
           ),
@@ -257,15 +263,16 @@ class _LedgerStatisticsPageState extends State<LedgerStatisticsPage> {
       ButtonSegment(value: LedgerPeriod.year, label: Text('年')),
     ],
     selected: {_period},
-    onSelectionChanged: (selection) =>
-        setState(() => _period = selection.first),
+    onSelectionChanged: TapSoundService.withUiClickValue(
+      (selection) => setState(() => _period = selection.first),
+    ),
   );
 
   Widget _periodNavigator() => Row(
     children: [
       IconButton(
         tooltip: '上一${_period.label}',
-        onPressed: () => _movePeriod(-1),
+        onPressed: TapSoundService.withUiClick(() => _movePeriod(-1)),
         icon: const Icon(Icons.chevron_left),
       ),
       Expanded(
@@ -278,7 +285,7 @@ class _LedgerStatisticsPageState extends State<LedgerStatisticsPage> {
       ),
       IconButton(
         tooltip: '下一${_period.label}',
-        onPressed: () => _movePeriod(1),
+        onPressed: TapSoundService.withUiClick(() => _movePeriod(1)),
         icon: const Icon(Icons.chevron_right),
       ),
     ],
@@ -388,13 +395,17 @@ class _LedgerStatisticsPageState extends State<LedgerStatisticsPage> {
               child: Text('月预算', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
             TextButton(
-              onPressed: widget.onEditMonthlyBudget,
+              onPressed: TapSoundService.withUiClick(
+                widget.onEditMonthlyBudget,
+              ),
               child: Text(widget.monthlyBudget == null ? '设置' : '调整'),
             ),
             if (widget.monthlyBudget != null)
               IconButton(
                 tooltip: '清除预算',
-                onPressed: widget.onClearMonthlyBudget,
+                onPressed: TapSoundService.withUiClick(
+                  widget.onClearMonthlyBudget,
+                ),
                 icon: const Icon(Icons.close, size: 18),
               ),
           ],
@@ -651,8 +662,9 @@ class _LedgerPeriodReportPageState extends State<LedgerPeriodReportPage> {
               ButtonSegment(value: LedgerPeriod.year, label: Text('年账单')),
             ],
             selected: {_period},
-            onSelectionChanged: (selection) =>
-                setState(() => _period = selection.first),
+            onSelectionChanged: TapSoundService.withUiClickValue(
+              (selection) => setState(() => _period = selection.first),
+            ),
           ),
           const SizedBox(height: 8),
           _reportNavigator(),
@@ -760,7 +772,7 @@ class _LedgerPeriodReportPageState extends State<LedgerPeriodReportPage> {
   Widget _reportNavigator() => Row(
     children: [
       IconButton(
-        onPressed: () => _move(-1),
+        onPressed: TapSoundService.withUiClick(() => _move(-1)),
         icon: const Icon(Icons.chevron_left),
       ),
       Expanded(
@@ -774,7 +786,7 @@ class _LedgerPeriodReportPageState extends State<LedgerPeriodReportPage> {
         ),
       ),
       IconButton(
-        onPressed: () => _move(1),
+        onPressed: TapSoundService.withUiClick(() => _move(1)),
         icon: const Icon(Icons.chevron_right),
       ),
     ],

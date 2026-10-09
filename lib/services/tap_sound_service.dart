@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 abstract final class TapSoundService {
   static AudioPool? _recordPool;
   static AudioPool? _selectionPool;
+  static AudioPool? _uiClickPool;
   static Future<void>? _initializing;
 
   static final _audioContext = AudioContext(
@@ -16,29 +18,30 @@ abstract final class TapSoundService {
     ),
   );
 
-  static Future<void> initialize() => _initializing ??= _loadPools();
+  static Future<void> initialize() {
+    return _initializing ??= _loadPools().whenComplete(() {
+      _initializing = null;
+    });
+  }
 
   static Future<void> _loadPools() async {
-    AudioPool? recordPool;
+    _recordPool ??= await _createPool('sounds/record_ding.wav');
+    _selectionPool ??= await _createPool('sounds/selection_ding.wav');
+    _uiClickPool ??= await _createPool('sounds/ui_click.wav');
+  }
+
+  static Future<AudioPool?> _createPool(String assetPath) async {
     try {
-      recordPool = await AudioPool.create(
-        source: AssetSource('sounds/record_ding.wav'),
+      return await AudioPool.create(
+        source: AssetSource(assetPath),
         minPlayers: 1,
         maxPlayers: 2,
         audioContext: _audioContext,
       );
-      final selectionPool = await AudioPool.create(
-        source: AssetSource('sounds/selection_ding.wav'),
-        minPlayers: 1,
-        maxPlayers: 2,
-        audioContext: _audioContext,
-      );
-      _recordPool = recordPool;
-      _selectionPool = selectionPool;
-    } catch (_) {
-      await recordPool?.dispose();
-      _recordPool = null;
-      _selectionPool = null;
+    } catch (error, stackTrace) {
+      debugPrint('TapSoundService: failed to load $assetPath: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return null;
     }
   }
 
@@ -46,21 +49,59 @@ abstract final class TapSoundService {
 
   static void playSelectionDing() => unawaited(_playDing(record: false));
 
+  static void playUiClick() => unawaited(_playUiClick());
+
+  static VoidCallback? withUiClick(VoidCallback? callback) {
+    if (callback == null) return null;
+    return () {
+      playUiClick();
+      callback();
+    };
+  }
+
+  static ValueChanged<T>? withUiClickValue<T>(ValueChanged<T>? callback) {
+    if (callback == null) return null;
+    return (value) {
+      playUiClick();
+      callback(value);
+    };
+  }
+
+  static Future<void> _playUiClick() async {
+    try {
+      await initialize();
+      final pool = _uiClickPool;
+      if (pool == null) {
+        await SystemSound.play(SystemSoundType.click);
+        return;
+      }
+      await pool.start(volume: 0.7);
+    } catch (error) {
+      debugPrint('TapSoundService: UI click playback failed: $error');
+      await _playSystemClick();
+    }
+  }
+
   static Future<void> _playDing({required bool record}) async {
     try {
       await initialize();
       final pool = record ? _recordPool : _selectionPool;
       if (pool == null) {
-        await SystemSound.play(SystemSoundType.click);
+        await _playSystemClick();
         return;
       }
       await pool.start(volume: record ? 0.72 : 0.48);
-    } catch (_) {
-      try {
-        await SystemSound.play(SystemSoundType.click);
-      } catch (_) {
-        // Keep audio playback failures from interrupting normal app actions.
-      }
+    } catch (error) {
+      debugPrint('TapSoundService: ding playback failed: $error');
+      await _playSystemClick();
+    }
+  }
+
+  static Future<void> _playSystemClick() async {
+    try {
+      await SystemSound.play(SystemSoundType.click);
+    } catch (error) {
+      debugPrint('TapSoundService: system click playback failed: $error');
     }
   }
 }

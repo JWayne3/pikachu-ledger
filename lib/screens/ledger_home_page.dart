@@ -126,27 +126,32 @@ class _LedgerHomePageState extends State<LedgerHomePage>
           ),
           actions: [
             TextButton.icon(
-              onPressed: () =>
-                  Clipboard.setData(ClipboardData(text: flow.userCode)),
+              onPressed: TapSoundService.withUiClick(
+                () => Clipboard.setData(ClipboardData(text: flow.userCode)),
+              ),
               icon: const Icon(Icons.copy),
               label: const Text('复制验证码'),
             ),
             TextButton.icon(
-              onPressed: () async {
+              onPressed: TapSoundService.withUiClick(() async {
                 await launchUrl(
                   flow.verificationUri,
                   mode: LaunchMode.externalApplication,
                 );
-              },
+              }),
               icon: const Icon(Icons.open_in_browser),
               label: const Text('打开 GitHub'),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
+              onPressed: TapSoundService.withUiClick(
+                () => Navigator.pop(dialogContext, false),
+              ),
               child: const Text('取消'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
+              onPressed: TapSoundService.withUiClick(
+                () => Navigator.pop(dialogContext, true),
+              ),
               child: const Text('我已授权'),
             ),
           ],
@@ -187,15 +192,21 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, 'later'),
+            onPressed: TapSoundService.withUiClick(
+              () => Navigator.pop(dialogContext, 'later'),
+            ),
             child: const Text('稍后'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, 'existing'),
+            onPressed: TapSoundService.withUiClick(
+              () => Navigator.pop(dialogContext, 'existing'),
+            ),
             child: const Text('使用已有仓库'),
           ),
           FilledButton.icon(
-            onPressed: () => Navigator.pop(dialogContext, 'create'),
+            onPressed: TapSoundService.withUiClick(
+              () => Navigator.pop(dialogContext, 'create'),
+            ),
             icon: const Icon(Icons.open_in_browser),
             label: const Text('打开 GitHub 创建私有仓库'),
           ),
@@ -234,11 +245,15 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: TapSoundService.withUiClick(
+              () => Navigator.pop(dialogContext, false),
+            ),
             child: const Text('稍后'),
           ),
           FilledButton.icon(
-            onPressed: () => Navigator.pop(dialogContext, true),
+            onPressed: TapSoundService.withUiClick(
+              () => Navigator.pop(dialogContext, true),
+            ),
             icon: const Icon(Icons.open_in_browser),
             label: const Text('打开 GitHub 安装页'),
           ),
@@ -257,11 +272,15 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: TapSoundService.withUiClick(
+              () => Navigator.pop(dialogContext, false),
+            ),
             child: const Text('稍后'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
+            onPressed: TapSoundService.withUiClick(
+              () => Navigator.pop(dialogContext, true),
+            ),
             child: const Text('已安装，检查权限'),
           ),
         ],
@@ -373,34 +392,10 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   }
 
   Future<void> _restoreGitHubBackup() async {
-    final passphraseController = TextEditingController();
     final passphrase = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('从 GitHub 恢复'),
-        content: TextField(
-          controller: passphraseController,
-          autofocus: true,
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: '加密口令',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, passphraseController.text),
-            child: const Text('继续'),
-          ),
-        ],
-      ),
+      builder: (_) => const _GitHubRestorePassphraseDialog(),
     );
-    passphraseController.dispose();
     if (passphrase == null || passphrase.isEmpty || !mounted) return;
 
     final confirmed = await showDialog<bool>(
@@ -410,11 +405,15 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         content: const Text('恢复会替换本机所有账单和预算。建议先从“更多选项”导出当前账本。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: TapSoundService.withUiClick(
+              () => Navigator.pop(dialogContext, false),
+            ),
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
+            onPressed: TapSoundService.withUiClick(
+              () => Navigator.pop(dialogContext, true),
+            ),
             child: const Text('下载并替换'),
           ),
         ],
@@ -491,55 +490,15 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       _showEntryForm(initialEntry: entry);
 
   Future<void> _editMonthlyBudget() async {
-    final controller = TextEditingController(
-      text: _monthlyBudget == null
-          ? ''
-          : (_monthlyBudget! / 100).toStringAsFixed(2),
-    );
-    final formKey = GlobalKey<FormState>();
+    final monthLabel = _monthLabel(_displayMonth);
     final amount = await showDialog<int>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('${_monthLabel(_displayMonth)}月预算'),
-        content: Form(
-          key: formKey,
-          child: TextFormField(
-            controller: controller,
-            autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: '预算金额',
-              prefixText: '¥ ',
-              border: OutlineInputBorder(),
-            ),
-            validator: (value) {
-              final amount = double.tryParse(value?.trim() ?? '');
-              if (amount == null || amount <= 0) return '请输入大于 0 的金额';
-              if (amount > 999999999) return '金额超出范围';
-              return null;
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (!formKey.currentState!.validate()) return;
-              Navigator.pop(
-                dialogContext,
-                (double.parse(controller.text.trim()) * 100).round(),
-              );
-            },
-            child: const Text('保存预算'),
-          ),
-        ],
+      builder: (_) => _MonthlyBudgetDialog(
+        monthLabel: monthLabel,
+        currentBudget: _monthlyBudget,
       ),
     );
-    controller.dispose();
-    if (amount == null) return;
+    if (amount == null || !mounted) return;
 
     try {
       await _database.setMonthlyBudget(_displayMonth, amount);
@@ -664,11 +623,15 @@ class _LedgerHomePageState extends State<LedgerHomePage>
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
+              onPressed: TapSoundService.withUiClick(
+                () => Navigator.pop(dialogContext, false),
+              ),
               child: const Text('取消'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
+              onPressed: TapSoundService.withUiClick(
+                () => Navigator.pop(dialogContext, true),
+              ),
               child: const Text('导入数据'),
             ),
           ],
@@ -724,11 +687,15 @@ class _LedgerHomePageState extends State<LedgerHomePage>
           content: const Text('恢复会替换本机现有的全部账单和预算。建议先导出当前数据备份。'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
+              onPressed: TapSoundService.withUiClick(
+                () => Navigator.pop(dialogContext, false),
+              ),
               child: const Text('取消'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
+              onPressed: TapSoundService.withUiClick(
+                () => Navigator.pop(dialogContext, true),
+              ),
               child: const Text('替换并恢复'),
             ),
           ],
@@ -756,11 +723,15 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         content: const Text('删除后无法恢复。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: TapSoundService.withUiClick(
+              () => Navigator.pop(dialogContext, false),
+            ),
             child: const Text('取消'),
           ),
           FilledButton.tonal(
-            onPressed: () => Navigator.pop(dialogContext, true),
+            onPressed: TapSoundService.withUiClick(
+              () => Navigator.pop(dialogContext, true),
+            ),
             child: const Text('删除'),
           ),
         ],
@@ -806,7 +777,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         actions: [
           PopupMenuButton<String>(
             tooltip: '更多选项',
-            onSelected: (value) {
+            onSelected: TapSoundService.withUiClickValue((value) {
               if (value == 'exportExcel') {
                 _exportExcelData();
               } else if (value == 'importExcel') {
@@ -823,7 +794,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                   children: const [Text('免费、无广告，账单保存在本机。')],
                 );
               }
-            },
+            }),
             itemBuilder: (context) => const [
               PopupMenuItem(
                 value: 'exportExcel',
@@ -904,7 +875,9 @@ class _LedgerHomePageState extends State<LedgerHomePage>
             ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedTab,
-        onDestinationSelected: (index) => setState(() => _selectedTab = index),
+        onDestinationSelected: TapSoundService.withUiClickValue(
+          (index) => setState(() => _selectedTab = index),
+        ),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), label: '首页'),
           NavigationDestination(
@@ -1062,7 +1035,9 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: _cancelGitHubAuthentication,
+                      onPressed: TapSoundService.withUiClick(
+                        _cancelGitHubAuthentication,
+                      ),
                       child: const Text('取消登录'),
                     ),
                   ),
@@ -1070,7 +1045,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: _signInToGitHub,
+                      onPressed: TapSoundService.withUiClick(_signInToGitHub),
                       icon: const Icon(Icons.login),
                       label: const Text('使用 GitHub 登录'),
                     ),
@@ -1090,7 +1065,9 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        onPressed: _installGitHubApp,
+                        onPressed: TapSoundService.withUiClick(
+                          _installGitHubApp,
+                        ),
                         icon: const Icon(Icons.manage_accounts_outlined),
                         label: const Text('管理 GitHub 备份授权'),
                       ),
@@ -1099,7 +1076,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: _signOutOfGitHub,
+                      onPressed: TapSoundService.withUiClick(_signOutOfGitHub),
                       icon: const Icon(Icons.logout),
                       label: const Text('从本机退出'),
                     ),
@@ -1107,7 +1084,9 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                   Align(
                     alignment: Alignment.center,
                     child: TextButton(
-                      onPressed: _openGitHubAuthorizations,
+                      onPressed: TapSoundService.withUiClick(
+                        _openGitHubAuthorizations,
+                      ),
                       child: const Text('在 GitHub 管理或撤销授权'),
                     ),
                   ),
@@ -1135,7 +1114,9 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                   ),
                   trailing: IconButton(
                     tooltip: '设置仓库和加密口令',
-                    onPressed: account == null ? null : _configureGitHubBackup,
+                    onPressed: TapSoundService.withUiClick(
+                      account == null ? null : _configureGitHubBackup,
+                    ),
                     icon: const Icon(Icons.settings_outlined),
                   ),
                 ),
@@ -1144,7 +1125,9 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     value: backup.weeklyEnabled,
-                    onChanged: account == null ? null : _setGitHubWeeklyBackup,
+                    onChanged: TapSoundService.withUiClickValue(
+                      account == null ? null : _setGitHubWeeklyBackup,
+                    ),
                     title: const Text('每周自动备份与提醒'),
                     subtitle: const Text('Android 在网络可用时运行，系统调度时间可能延后。'),
                   ),
@@ -1166,9 +1149,11 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                     children: [
                       Expanded(
                         child: FilledButton.tonalIcon(
-                          onPressed: account == null || _uploadingBackup
-                              ? null
-                              : _uploadGitHubBackup,
+                          onPressed: TapSoundService.withUiClick(
+                            account == null || _uploadingBackup
+                                ? null
+                                : _uploadGitHubBackup,
+                          ),
                           icon: _uploadingBackup
                               ? const SizedBox.square(
                                   dimension: 16,
@@ -1183,9 +1168,11 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                       const SizedBox(width: 8),
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: account == null || _uploadingBackup
-                              ? null
-                              : _restoreGitHubBackup,
+                          onPressed: TapSoundService.withUiClick(
+                            account == null || _uploadingBackup
+                                ? null
+                                : _restoreGitHubBackup,
+                          ),
                           icon: const Icon(Icons.cloud_download_outlined),
                           label: const Text('从 GitHub 恢复'),
                         ),
@@ -1196,7 +1183,9 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.tonalIcon(
-                      onPressed: _promptGitHubBackupSetup,
+                      onPressed: TapSoundService.withUiClick(
+                        _promptGitHubBackupSetup,
+                      ),
                       icon: const Icon(Icons.settings_backup_restore),
                       label: const Text('设置 GitHub 加密备份'),
                     ),
@@ -1252,7 +1241,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     children: [
       IconButton(
         tooltip: '上个月',
-        onPressed: () => _changeMonth(-1),
+        onPressed: TapSoundService.withUiClick(() => _changeMonth(-1)),
         icon: const Icon(Icons.chevron_left),
       ),
       Text(
@@ -1261,7 +1250,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       ),
       IconButton(
         tooltip: '下个月',
-        onPressed: () => _changeMonth(1),
+        onPressed: TapSoundService.withUiClick(() => _changeMonth(1)),
         icon: const Icon(Icons.chevron_right),
       ),
     ],
@@ -1384,13 +1373,17 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   Widget _filterChip(String label, EntryType? type) => ChoiceChip(
     label: Text(label),
     selected: _billFilter == type,
-    onSelected: (_) => setState(() => _billFilter = type),
+    onSelected: TapSoundService.withUiClickValue(
+      (_) => setState(() => _billFilter = type),
+    ),
   );
 
   Widget _categoryFilterChip(String label, String? category) => ChoiceChip(
     label: Text(label),
     selected: _categoryFilter == category,
-    onSelected: (_) => setState(() => _categoryFilter = category),
+    onSelected: TapSoundService.withUiClickValue(
+      (_) => setState(() => _categoryFilter = category),
+    ),
   );
 
   Widget _entryTile(LedgerEntry entry) {
@@ -1428,7 +1421,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
             IconButton(
               tooltip: '编辑账单',
               visualDensity: VisualDensity.compact,
-              onPressed: () => _editEntry(entry),
+              onPressed: TapSoundService.withUiClick(() => _editEntry(entry)),
               icon: Icon(
                 Icons.edit_outlined,
                 color: Colors.grey.shade500,
@@ -1438,7 +1431,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
             IconButton(
               tooltip: '删除账单',
               visualDensity: VisualDensity.compact,
-              onPressed: () => _deleteEntry(entry),
+              onPressed: TapSoundService.withUiClick(() => _deleteEntry(entry)),
               icon: Icon(
                 Icons.delete_outline,
                 color: Colors.grey.shade500,
@@ -1605,8 +1598,9 @@ class _GitHubBackupSetupDialogState extends State<_GitHubBackupSetupDialog> {
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _enableWeekly,
-                onChanged: (value) =>
-                    setState(() => _enableWeekly = value ?? false),
+                onChanged: TapSoundService.withUiClickValue(
+                  (value) => setState(() => _enableWeekly = value ?? false),
+                ),
                 title: const Text('开启每周自动备份与提醒'),
                 subtitle: const Text('Android 会在网络可用时调度上传，时间可能有延迟。'),
                 controlAffinity: ListTileControlAffinity.leading,
@@ -1616,8 +1610,14 @@ class _GitHubBackupSetupDialogState extends State<_GitHubBackupSetupDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: _cancel, child: const Text('取消')),
-        FilledButton(onPressed: _submit, child: const Text('验证并保存')),
+        TextButton(
+          onPressed: TapSoundService.withUiClick(_cancel),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: TapSoundService.withUiClick(_submit),
+          child: const Text('验证并保存'),
+        ),
       ],
     );
   }
@@ -1751,11 +1751,15 @@ class _EntryFormState extends State<_EntryForm> {
         content: Text('“$category”将不再出现在新账单分类中，已有账单不会被修改。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: TapSoundService.withUiClick(
+              () => Navigator.pop(dialogContext, false),
+            ),
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
+            onPressed: TapSoundService.withUiClick(
+              () => Navigator.pop(dialogContext, true),
+            ),
             child: const Text('移除'),
           ),
         ],
@@ -1807,10 +1811,10 @@ class _EntryFormState extends State<_EntryForm> {
                             ),
                             trailing: IconButton(
                               tooltip: '移除分类',
-                              onPressed: () async {
+                              onPressed: TapSoundService.withUiClick(() async {
                                 await _removeCustomCategory(category);
                                 if (mounted) setDialogState(() {});
-                              },
+                              }),
                               icon: const Icon(Icons.delete_outline),
                             ),
                           ),
@@ -1820,14 +1824,16 @@ class _EntryFormState extends State<_EntryForm> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: TapSoundService.withUiClick(
+                () => Navigator.pop(dialogContext),
+              ),
               child: const Text('完成'),
             ),
             FilledButton.icon(
-              onPressed: () async {
+              onPressed: TapSoundService.withUiClick(() async {
                 Navigator.pop(dialogContext);
                 await _chooseOtherCategory(createCustom: true);
-              },
+              }),
               icon: const Icon(Icons.add),
               label: const Text('添加分类'),
             ),
@@ -1896,13 +1902,15 @@ class _EntryFormState extends State<_EntryForm> {
                       ),
                     ),
                     FilledButton.icon(
-                      onPressed: _save,
+                      onPressed: TapSoundService.withUiClick(_save),
                       icon: const Icon(Icons.check),
                       label: const Text('保存账单'),
                     ),
                     IconButton(
                       tooltip: '关闭',
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: TapSoundService.withUiClick(
+                        () => Navigator.pop(context),
+                      ),
                       icon: const Icon(Icons.close),
                     ),
                   ],
@@ -1965,7 +1973,7 @@ class _EntryFormState extends State<_EntryForm> {
                           leading: const Icon(Icons.calendar_today_outlined),
                           title: const Text('日期'),
                           trailing: Text(_dateLabel(_date)),
-                          onTap: _chooseDate,
+                          onTap: TapSoundService.withUiClick(_chooseDate),
                         ),
                         TextFormField(
                           controller: _noteController,
@@ -1986,8 +1994,9 @@ class _EntryFormState extends State<_EntryForm> {
                             ),
                             const Spacer(),
                             TextButton.icon(
-                              onPressed: () =>
-                                  _chooseOtherCategory(createCustom: true),
+                              onPressed: TapSoundService.withUiClick(
+                                () => _chooseOtherCategory(createCustom: true),
+                              ),
                               icon: const Icon(Icons.add, size: 18),
                               label: const Text('自定义分类'),
                             ),
@@ -2011,7 +2020,9 @@ class _EntryFormState extends State<_EntryForm> {
                                 message: '管理自定义分类',
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(14),
-                                  onTap: _manageCustomCategories,
+                                  onTap: TapSoundService.withUiClick(
+                                    _manageCustomCategories,
+                                  ),
                                   child: Container(
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFF5F5F5),
@@ -2055,9 +2066,11 @@ class _EntryFormState extends State<_EntryForm> {
                                     setState(() => _category = category);
                                   }
                                 },
-                                onLongPress: isCustom
-                                    ? () => _removeCustomCategory(category)
-                                    : null,
+                                onLongPress: TapSoundService.withUiClick(
+                                  isCustom
+                                      ? () => _removeCustomCategory(category)
+                                      : null,
+                                ),
                                 child: Container(
                                   decoration: BoxDecoration(
                                     color: selected
@@ -2220,12 +2233,142 @@ class _OtherCategoryDialogState extends State<_OtherCategoryDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: _cancel, child: const Text('取消')),
+        TextButton(
+          onPressed: TapSoundService.withUiClick(_cancel),
+          child: const Text('取消'),
+        ),
         FilledButton(
-          onPressed: _submit,
+          onPressed: TapSoundService.withUiClick(_submit),
           child: Text(widget.createCustom ? '添加并选择' : '完成'),
         ),
       ],
     );
   }
+}
+
+class _GitHubRestorePassphraseDialog extends StatefulWidget {
+  const _GitHubRestorePassphraseDialog();
+
+  @override
+  State<_GitHubRestorePassphraseDialog> createState() =>
+      _GitHubRestorePassphraseDialogState();
+}
+
+class _GitHubRestorePassphraseDialogState
+    extends State<_GitHubRestorePassphraseDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _cancel() {
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop();
+  }
+
+  void _submit() {
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop(_controller.text);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('从 GitHub 恢复'),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      obscureText: true,
+      decoration: const InputDecoration(
+        labelText: '加密口令',
+        border: OutlineInputBorder(),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: TapSoundService.withUiClick(_cancel),
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        onPressed: TapSoundService.withUiClick(_submit),
+        child: const Text('继续'),
+      ),
+    ],
+  );
+}
+
+class _MonthlyBudgetDialog extends StatefulWidget {
+  const _MonthlyBudgetDialog({
+    required this.monthLabel,
+    required this.currentBudget,
+  });
+
+  final String monthLabel;
+  final int? currentBudget;
+
+  @override
+  State<_MonthlyBudgetDialog> createState() => _MonthlyBudgetDialogState();
+}
+
+class _MonthlyBudgetDialogState extends State<_MonthlyBudgetDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.currentBudget == null
+        ? ''
+        : (widget.currentBudget! / 100).toStringAsFixed(2),
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _cancel() {
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop();
+  }
+
+  void _save() {
+    if (!_formKey.currentState!.validate()) return;
+    final amount = (double.parse(_controller.text.trim()) * 100).round();
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop(amount);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text('${widget.monthLabel}预算'),
+    content: Form(
+      key: _formKey,
+      child: TextFormField(
+        controller: _controller,
+        autofocus: true,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(
+          labelText: '预算金额',
+          prefixText: '¥ ',
+          border: OutlineInputBorder(),
+        ),
+        validator: (value) {
+          final amount = double.tryParse(value?.trim() ?? '');
+          if (amount == null || amount <= 0) return '请输入大于 0 的金额';
+          if (amount > 999999999) return '金额超出范围';
+          return null;
+        },
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: TapSoundService.withUiClick(_cancel),
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        onPressed: TapSoundService.withUiClick(_save),
+        child: const Text('保存预算'),
+      ),
+    ],
+  );
 }
