@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -12,6 +13,7 @@ import 'ledger_statistics_page.dart';
 import '../services/github_backup_service.dart';
 import '../services/github_auth_service.dart';
 import '../services/ledger_excel_service.dart';
+import '../services/tap_sound_service.dart';
 
 class LedgerHomePage extends StatefulWidget {
   const LedgerHomePage({super.key});
@@ -55,6 +57,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   @override
   void initState() {
     super.initState();
+    unawaited(TapSoundService.initialize());
     WidgetsBinding.instance.addObserver(this);
     _loadEntries();
     _loadGitHubAccount();
@@ -891,7 +894,11 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       floatingActionButton: _selectedTab >= 2
           ? null
           : FloatingActionButton.extended(
-              onPressed: () => _showEntryForm(),
+              onPressed: () {
+                TapSoundService.playRecordDing();
+                _showEntryForm();
+              },
+              enableFeedback: false,
               icon: const Icon(Icons.add),
               label: const Text('记一笔'),
             ),
@@ -1971,7 +1978,11 @@ class _EntryFormState extends State<_EntryForm> {
                   ),
                 ],
                 selected: {_type},
-                onSelectionChanged: (selection) => _changeType(selection.first),
+                style: SegmentedButton.styleFrom(enableFeedback: false),
+                onSelectionChanged: (selection) {
+                  TapSoundService.playSelectionDing();
+                  _changeType(selection.first);
+                },
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -2054,9 +2065,15 @@ class _EntryFormState extends State<_EntryForm> {
                     message: isCustom ? '长按可移除自定义分类' : category,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
-                      onTap: () => category == LedgerCategories.other
-                          ? _chooseOtherCategory()
-                          : setState(() => _category = category),
+                      enableFeedback: false,
+                      onTap: () {
+                        TapSoundService.playSelectionDing();
+                        if (category == LedgerCategories.other) {
+                          _chooseOtherCategory();
+                        } else {
+                          setState(() => _category = category);
+                        }
+                      },
                       onLongPress: isCustom
                           ? () => _removeCustomCategory(category)
                           : null,
