@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../models/ledger_activity_stats.dart';
 import '../models/ledger_categories.dart';
 import '../models/ledger_entry.dart';
 import '../widgets/ledger_charts.dart';
@@ -1112,26 +1113,15 @@ class _LedgerPeriodReportPageState extends State<LedgerPeriodReportPage> {
   );
 
   Widget _achievementCard() {
-    final allDays =
-        widget.entries.map((entry) => _dayKey(entry.date)).toSet().toList()
-          ..sort();
-    var currentRun = 0;
-    var longestRun = 0;
-    DateTime? previous;
-    for (final day in allDays) {
-      final date = DateTime.parse(day);
-      currentRun = previous != null && date.difference(previous).inDays == 1
-          ? currentRun + 1
-          : 1;
-      longestRun = math.max(longestRun, currentRun);
-      previous = date;
-    }
+    final dates = widget.entries.map((entry) => entry.date);
+    final currentStreak = LedgerActivityStats.currentStreak(dates);
+    final recordedDays = LedgerActivityStats.uniqueRecordingDays(dates);
     return _card(
       title: '记账成就',
       child: Row(
         children: [
-          Expanded(child: _achievement('$longestRun天', '最长连续记账')),
-          Expanded(child: _achievement('${allDays.length}天', '累计记账天数')),
+          Expanded(child: _achievement('$currentStreak天', '已连续记账')),
+          Expanded(child: _achievement('$recordedDays天', '累计记账天数')),
           Expanded(child: _achievement('${widget.entries.length}笔', '累计账单笔数')),
         ],
       ),
