@@ -22,6 +22,15 @@ class GitHubBackupConfig {
   final DateTime? lastBackupAt;
 }
 
+class GitHubRepository {
+  const GitHubRepository({required this.owner, required this.name});
+
+  final String owner;
+  final String name;
+
+  String get fullName => '$owner/$name';
+}
+
 class GitHubBackupException implements Exception {
   const GitHubBackupException(this.message);
 
@@ -107,6 +116,56 @@ class GitHubBackupService {
     await _storage.write(key: _ownerKey, value: normalizedOwner);
     await _storage.write(key: _repositoryKey, value: normalizedRepository);
     await _storage.write(key: _passphraseKey, value: storedPassphrase);
+  }
+
+  Future<GitHubRepository> createPrivateRepository(String name) async {
+    final normalized = name.trim();
+    if (!RegExp(r'^[A-Za-z0-9_.-]{1,100}$').hasMatch(normalized)) {
+      throw const GitHubBackupException(
+        '仓库名只能包含字母、数字、句点、下划线和连字符，长度不超过 100 个字符。',
+      );
+    }
+    final token = await _requiredToken();
+    final response = await _client
+        .post(
+          Uri.https('api.github.com', '/user/repos'),
+          headers: _headers(token),
+          body: jsonEncode({
+            'name': normalized,
+            'description': '皮卡丘记账的个人加密数据备份。',
+            'private': true,
+            'auto_init': true,
+            'has_issues': false,
+            'has_projects': false,
+            'has_wiki': false,
+          }),
+        )
+        .timeout(_requestTimeout);
+    final data = _decodeJson(response);
+    final owner = data['owner'];
+    final ownerLogin = owner is Map ? owner['login'] : null;
+    final repositoryName = data['name'];
+    if (ownerLogin is! String || repositoryName is! String) {
+      throw const GitHubBackupException('GitHub 创建仓库后返回了无效信息。');
+    }
+    if (data['private'] != true) {
+      throw const GitHubBackupException('GitHub 创建的仓库不是私有仓库，已停止备份设置。');
+    }
+    return GitHubRepository(owner: ownerLogin, name: repositoryName);
+  }
+
+  Future<bool> hasWriteAccess(String owner, String repository) async {
+    final token = await _requiredToken();
+    final response = await _client
+        .get(_repositoryUri(owner, repository), headers: _headers(token))
+        .timeout(_requestTimeout);
+    if (response.statusCode == 403 || response.statusCode == 404) return false;
+    final data = _decodeJson(response);
+    if (data['private'] != true) {
+      throw const GitHubBackupException('备份目标不是私有仓库。');
+    }
+    final permissions = data['permissions'];
+    return permissions is Map && permissions['push'] == true;
   }
 
   Future<bool> setWeeklyEnabled(bool enabled) async {

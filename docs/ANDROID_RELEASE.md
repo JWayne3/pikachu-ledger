@@ -36,14 +36,14 @@ PowerShell 编码命令：
 
 ### 3. 配置 GitHub 登录
 
-按 [GitHub 登录与加密备份设置](GITHUB_SYNC_SETUP.md) 创建公开 GitHub App，启用 Device Flow，并将其 `Contents: Read and write` 权限限定安装到用户自己选择的私有仓库。将下列非机密值添加为 Actions 仓库变量：
+按 [GitHub 登录与加密备份设置](GITHUB_SYNC_SETUP.md) 为项目创建公开 GitHub App，启用 Device Flow，并配置 `Repository creation: write` 与 `Contents: write`。普通用户授权时可以把仓库访问限定到皮卡丘记账专用的私有仓库。将下列公开值添加为 Actions 仓库变量：
 
 | 类型 | 名称 | 值 |
 | --- | --- | --- |
 | Variable | `GITHUB_APP_CLIENT_ID` | GitHub App Client ID |
 | Variable | `GITHUB_APP_SLUG` | GitHub App URL slug |
 
-不要在客户端或 GitHub Actions 中配置 GitHub App Client Secret；Android Device Flow 不需要它。GitHub App 的 Client ID 和 slug 是公开配置值。
+Android Device Flow 不需要 Client Secret；不要把 Client Secret 或个人访问令牌放进客户端。GitHub App 的 Client ID 和 slug 是公开配置值。由维护者配置一次后，发布 APK 会包含它们，普通用户不需要注册 GitHub App。
 
 ## 发布一个版本
 

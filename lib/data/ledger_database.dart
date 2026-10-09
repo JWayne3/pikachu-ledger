@@ -19,7 +19,7 @@ class LedgerDatabase {
     final root = await getDatabasesPath();
     final db = await openDatabase(
       path.join(root, _databaseName),
-      version: 2,
+      version: 3,
       onCreate: (database, version) async {
         await database.execute('''
           CREATE TABLE $_tableName (
@@ -40,6 +40,7 @@ class LedgerDatabase {
             amount_cents INTEGER NOT NULL CHECK (amount_cents > 0)
           )
         ''');
+        await _createCustomCategoriesTable(database);
       },
       onUpgrade: (database, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -49,6 +50,9 @@ class LedgerDatabase {
             amount_cents INTEGER NOT NULL CHECK (amount_cents > 0)
           )
           ''');
+        }
+        if (oldVersion < 3) {
+          await _createCustomCategoriesTable(database);
         }
       },
     );
@@ -116,30 +120,74 @@ class LedgerDatabase {
     );
   }
 
+  Future<List<String>> getCustomCategories(EntryType type) async {
+    final db = await database;
+    final rows = await db.query(
+      'custom_categories',
+      columns: ['name'],
+      where: 'type = ?',
+      whereArgs: [type.name],
+      orderBy: 'name COLLATE NOCASE',
+    );
+    return rows.map((row) => row['name']! as String).toList(growable: false);
+  }
+
+  Future<void> addCustomCategory(EntryType type, String name) async {
+    final normalized = name.trim();
+    if (normalized.isEmpty || normalized.runes.length > 16) {
+      throw ArgumentError.value(name, 'name', '分类名称需为 1 到 16 个字符。');
+    }
+    final db = await database;
+    await db.insert('custom_categories', {
+      'type': type.name,
+      'name': normalized,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  Future<void> removeCustomCategory(EntryType type, String name) async {
+    final db = await database;
+    await db.delete(
+      'custom_categories',
+      where: 'type = ? AND name = ?',
+      whereArgs: [type.name, name],
+    );
+  }
+
   Future<Map<String, Object?>> createBackupSnapshot() async {
     final db = await database;
     return {
       'format': 'ledger_app_backup',
-      'version': 1,
+      'version': 2,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'entries': await db.query(_tableName, orderBy: 'date ASC, id ASC'),
       'monthlyBudgets': await db.query('monthly_budgets', orderBy: 'month ASC'),
+      'customCategories': await db.query(
+        'custom_categories',
+        orderBy: 'type ASC, name COLLATE NOCASE ASC',
+      ),
     };
   }
 
   Future<void> restoreBackup(Map<String, Object?> snapshot) async {
-    if (snapshot['format'] != 'ledger_app_backup' || snapshot['version'] != 1) {
+    final backupVersion = snapshot['version'];
+    if (snapshot['format'] != 'ledger_app_backup' ||
+        backupVersion is! int ||
+        (backupVersion != 1 && backupVersion != 2)) {
       throw const FormatException('备份文件格式或版本不受支持。');
     }
 
     final rawEntries = snapshot['entries'];
     final rawBudgets = snapshot['monthlyBudgets'];
-    if (rawEntries is! List || rawBudgets is! List) {
+    final rawCategories = snapshot['customCategories'] ?? const [];
+    if (rawEntries is! List || rawBudgets is! List || rawCategories is! List) {
       throw const FormatException('备份文件缺少账单或预算数据。');
     }
 
     final entries = rawEntries.map(_decodeBackupEntry).toList(growable: false);
     final budgets = rawBudgets.map(_decodeBackupBudget).toList(growable: false);
+    final categories = rawCategories
+        .map(_decodeBackupCustomCategory)
+        .toList(growable: false);
     final budgetMonths = budgets.map((budget) => budget['month']).toSet();
     if (budgetMonths.length != budgets.length) {
       throw const FormatException('备份中存在重复月份的预算。');
@@ -149,12 +197,16 @@ class LedgerDatabase {
     await db.transaction((transaction) async {
       await transaction.delete(_tableName);
       await transaction.delete('monthly_budgets');
+      await transaction.delete('custom_categories');
       final batch = transaction.batch();
       for (final entry in entries) {
         batch.insert(_tableName, entry.toMap());
       }
       for (final budget in budgets) {
         batch.insert('monthly_budgets', budget);
+      }
+      for (final category in categories) {
+        batch.insert('custom_categories', category);
       }
       await batch.commit(noResult: true);
     });
@@ -206,6 +258,29 @@ class LedgerDatabase {
     }
     return {'month': month, 'amount_cents': amount};
   }
+
+  Map<String, Object?> _decodeBackupCustomCategory(Object? value) {
+    if (value is! Map) throw const FormatException('自定义分类数据格式无效。');
+    final type = value['type'];
+    final name = value['name'];
+    if (type is! String ||
+        !EntryType.values.any((entryType) => entryType.name == type) ||
+        name is! String ||
+        name.trim().isEmpty ||
+        name.runes.length > 16) {
+      throw const FormatException('备份中包含无效的自定义分类。');
+    }
+    return {'type': type, 'name': name.trim()};
+  }
+
+  Future<void> _createCustomCategoriesTable(Database database) =>
+      database.execute('''
+        CREATE TABLE custom_categories (
+          type TEXT NOT NULL CHECK (type IN ('expense', 'income')),
+          name TEXT NOT NULL,
+          PRIMARY KEY(type, name)
+        )
+      ''');
 
   static String _monthKey(DateTime month) =>
       '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}';

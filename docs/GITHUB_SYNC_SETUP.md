@@ -1,37 +1,64 @@
-# GitHub 登录与加密备份设置（Android）
+# GitHub 登录与加密备份（Android）
 
-## 先决条件
+## 普通用户如何使用
 
-GitHub 备份需要一个 GitHub App Client ID 和 App Slug。Device Flow 不需要在应用里放置 Client Secret。公开发布的维护者应创建并维护项目自己的 GitHub App；个人本地构建也可以使用自己的测试 App。
+普通用户不需要注册 GitHub App、填写 Client ID、创建访问令牌或自行构建应用。官方发布版会内置项目的公开 GitHub App Client ID。
 
-1. 在 GitHub Developer Settings 中创建 GitHub App，将可安装范围设为 **Any account**（公开 App），启用 **Device Flow**，并授予 `Contents: Read and write` 权限。应用会请求 `offline_access`，以使用短期访问令牌和可刷新的令牌；每周同步可在访问令牌过期后刷新。
-2. 安装 GitHub App 时选择 **Only select repositories**，只勾选用于账本备份的那个私有仓库。GitHub 的 App 安装设置决定仓库访问范围；登录授权本身只用于确认用户身份和授权 App 代表用户执行操作。
-3. 复制 App 的 Client ID 和 URL slug。分别以构建参数提供：
+1. 在“账户”页点“使用 GitHub 登录”。应用会显示一次性验证码；点“打开 GitHub”，在 GitHub 页面输入验证码并授权，然后返回应用。
+2. 登录后，应用会询问是否创建专用私有仓库。拒绝或稍后设置都不会影响本地记账。
+3. 选择“创建专用私有仓库”，填写仓库名和至少 12 个字符的备份口令，并选择是否开启每周备份。
+4. 如果 GitHub 要求安装/授权应用，按屏幕指引选择自己的账户，选择 **Only select repositories**，只勾选刚创建的账本数据仓库，再返回应用点“检查并继续”。
+5. 应用会先在手机上加密账本，再上传第一份备份。口令保存在本机 Android 加密存储中；换机恢复时需要记住原口令。
+
+也可以选择“使用已有仓库”。目标仓库必须是私有仓库，而且 GitHub App 必须有该仓库的内容写入权限。
+
+## 为什么应用需要 Client ID
+
+Client ID 是 GitHub 用来识别“哪个应用正在请求授权”的公开编号，不是用户的密码、访问令牌或 Client Secret。GitHub 的 Device Flow 要求每个应用提供自己的 Client ID。项目维护者为皮卡丘记账创建并配置一次；发布的 APK 会携带这个公开编号，因此普通用户不需要配置或注册自己的 App。安卓客户端不保存 Client Secret。
+
+如果应用页面显示“这个构建版本还没有接入 GitHub 授权服务”，说明安装的是未配置 GitHub 登录的本地开发构建。普通用户应使用项目发布的 APK；从源码自行构建的开发者按下面的维护者说明配置自己的测试 App。
+
+## 项目维护者的一次性配置
+
+只有要发布应用的维护者需要做这些步骤：
+
+1. 在 GitHub 账户 **Settings → Developer settings → GitHub Apps → New GitHub App** 创建公开 GitHub App。主页 URL 可填写本仓库地址，不需要配置 webhook。
+2. 启用 **Device Flow**，允许安装到 **Any account**。
+3. 只申请应用所需权限：
+   - **Repository creation: write**，用于用户同意后创建专用仓库。
+   - **Contents: write**，用于把加密备份写入用户明确授权的仓库。
+4. 保存 GitHub App 后，记录 **Client ID** 和应用 URL 中的 **slug**。不要把 Client Secret、个人访问令牌或用户的备份口令写入源码。
+5. 在本项目 GitHub 仓库打开 **Settings → Secrets and variables → Actions → Variables**，添加：
+
+   | 名称 | 值 |
+   | --- | --- |
+   | `GITHUB_APP_CLIENT_ID` | 第 4 步得到的公开 Client ID |
+   | `GITHUB_APP_SLUG` | GitHub App URL 中的 slug |
+
+   正式发布工作流会把这两个公开值编入 APK。它们不是 Actions Secrets。
+
+## 本地开发构建
+
+从源码运行时，在命令中传入维护者自己注册的测试 App 信息：
 
 ```powershell
-flutter run --dart-define=GITHUB_APP_CLIENT_ID=Iv1.example --dart-define=GITHUB_APP_SLUG=pikachu-ledger
+flutter run `
+  --dart-define=GITHUB_APP_CLIENT_ID=Iv1.example `
+  --dart-define=GITHUB_APP_SLUG=pikachu-ledger
 ```
 
-正式构建也需要传入同一个公开 Client ID。不要把 Client Secret、个人访问令牌或加密口令写进源码、提交记录或构建日志。
+普通用户不用执行这些命令，也不用阅读或修改本文件才能登录。
 
-## 在应用中开启备份
+## 加密、权限和恢复
 
-1. 在 Android 版应用的“账户”页使用 GitHub 登录，并在 GitHub 授权页面输入一次性验证码。
-2. 点“安装或管理 GitHub App”，在 GitHub 页面把 App 安装到你的账户，并仅选择一个**私有仓库**。
-3. 在应用中填写该仓库的所有者和仓库名；应用会验证它确为私有仓库并有写入权限。
-4. 设置至少 12 个字符的加密口令。应用会把口令写入 Android 加密存储，以便后台任务加密后上传；换机恢复时需要再次输入同一口令。
-5. 开启每周自动备份与提醒，并允许 Android 通知权限。
-6. 可随时点“立即备份”手动上传，或在新设备上选择“从 GitHub 恢复”。恢复会替换本机所有账单和预算。
-
-## 备份行为与限制
-
-- 账单和预算先压缩，再使用 PBKDF2-HMAC-SHA256（600,000 次迭代）派生密钥，以 AES-256-GCM 加密。仓库中只保存密文和解密所需的算法参数。
-- 每次上传都覆盖仓库中的 `pikachu-ledger/backup.json`。这是单向快照备份，不提供多设备自动合并；建议只在一台设备上录入，或在换设备时先恢复再继续使用。
-- GitHub 仓库必须保持私有。应用会在保存设置、上传和恢复时检查仓库是否为私有并确认授权具有写入权限。
-- Android WorkManager 和通知均由系统调度，执行时间可能延迟，省电策略也可能影响执行。此功能不会启动或检查 VPN；在 GitHub 无法访问的网络下，任务会失败并按系统重试策略再试。
-- Android 13 及以上版本需要通知权限才能显示每周提醒。拒绝提醒权限不会阻止已开启的后台备份。
-- 丢失加密口令后，应用无法解密云端账本。请把口令记在安全的密码管理器中。
+- 账单和预算先压缩，再使用 PBKDF2-HMAC-SHA256（600,000 次迭代）派生密钥，并以 AES-256-GCM 加密。仓库只保存密文和解密参数。
+- 账单及自定义分类都包含在加密快照中。每次上传覆盖私有仓库内的 `pikachu-ledger/backup.json`；这是单向快照，不会在多台设备间合并记录。
+- 建仓库和安装授权均由用户确认。安装时可将 GitHub App 限定到专用备份仓库；应用不会要求用户授予对不相关仓库的写入访问。
+- 恢复备份前会再次要求口令，并在用户确认后替换本机账单、预算和自定义分类。建议恢复前先导出本地备份。
+- 每周后台任务由 Android WorkManager 调度，执行时间可能延迟。GitHub 无法访问时系统会按规则重试；VPN 由用户自行开启。
+- 用户可以关闭每周备份、删除备份设置、在 GitHub 撤销应用授权，或删除专用私有仓库。
+- 丢失加密口令后，应用无法解密仓库中的账单。请把口令保存在安全的密码管理器中。
 
 ## 平台范围
 
-当前仓库只配置并交付 Android 版本。Flutter 保留未来扩展平台的空间，但本项目尚未实现或发布 iOS 版本。
+当前交付 Android 版本；iOS 尚未实现或发布。

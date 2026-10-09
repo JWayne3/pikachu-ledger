@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/ledger_database.dart';
+import '../models/ledger_categories.dart';
 import '../models/ledger_entry.dart';
+import 'ledger_statistics_page.dart';
 import '../services/github_backup_service.dart';
 import '../services/github_auth_service.dart';
 
@@ -97,7 +99,9 @@ class _LedgerHomePageState extends State<LedgerHomePage>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('打开 GitHub 授权页面，输入这次性验证码：'),
+              const Text(
+                '按下面步骤连接 GitHub：\n1. 点“打开 GitHub”进入授权页。\n2. 输入下面的一次性验证码并确认授权。\n3. 返回应用；只有你确认后，应用才会创建专用私有仓库。',
+              ),
               const SizedBox(height: 12),
               Center(
                 child: SelectableText(
@@ -157,11 +161,275 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       if (!mounted) return;
       setState(() => _githubAccount = account);
       _showMessage('已登录 GitHub：${account.login}');
+      await _loadGitHubBackupConfig();
+      if (_githubBackupConfig == null) {
+        await _promptGitHubBackupSetup();
+      }
     } catch (error) {
       _showMessage('GitHub 登录失败：$error');
     } finally {
       if (mounted) setState(() => _authenticating = false);
     }
+  }
+
+  Future<void> _promptGitHubBackupSetup() async {
+    if (_githubAccount == null) return;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('GitHub 已连接'),
+        content: const Text(
+          '账单默认只保存在手机。本应用可以为你创建一个专用的私有仓库，并且只上传本机加密后的备份。\n\n你可以现在创建，也可以稍后再设置；不创建仓库不会影响本地记账。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'later'),
+            child: const Text('稍后'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'existing'),
+            child: const Text('使用已有仓库'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, 'create'),
+            icon: const Icon(Icons.lock_outline),
+            label: const Text('创建专用私有仓库'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'create') {
+      await _createGitHubBackupRepository();
+    } else if (choice == 'existing') {
+      await _configureGitHubBackup();
+    }
+  }
+
+  Future<void> _createGitHubBackupRepository() async {
+    final account = _githubAccount;
+    if (account == null) return;
+    final repositoryController = TextEditingController(
+      text: 'pikachu-ledger-data-${account.login.toLowerCase()}',
+    );
+    final passphraseController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    var enableWeekly = true;
+    final draft = await showDialog<_GitHubRepositoryDraft>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('创建加密备份仓库'),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '应用会在你的 GitHub 账户创建一个私有仓库。上传前账单会在手机上加密；仓库名称和备份口令都可以自定义。',
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: repositoryController,
+                    maxLength: 100,
+                    decoration: const InputDecoration(
+                      labelText: '私有仓库名称',
+                      border: OutlineInputBorder(),
+                      counterText: '',
+                    ),
+                    validator: (value) {
+                      final name = (value ?? '').trim();
+                      if (!RegExp(r'^[A-Za-z0-9_.-]{1,100}$').hasMatch(name)) {
+                        return '仅使用英文、数字、句点、下划线或连字符';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: passphraseController,
+                    obscureText: true,
+                    maxLength: 80,
+                    decoration: const InputDecoration(
+                      labelText: '备份加密口令（至少 12 个字符）',
+                      border: OutlineInputBorder(),
+                      counterText: '',
+                    ),
+                    validator: (value) => (value ?? '').runes.length < 12
+                        ? '口令至少需要 12 个字符'
+                        : null,
+                  ),
+                  const SizedBox(height: 4),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: enableWeekly,
+                    onChanged: (value) =>
+                        setDialogState(() => enableWeekly = value ?? false),
+                    title: const Text('开启每周加密备份与提醒'),
+                    subtitle: const Text('时间由 Android 系统调度，联网后运行。'),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                  Text(
+                    '请记住口令。忘记口令后，任何人都无法解密仓库里的账单。',
+                    style: TextStyle(
+                      color: Colors.orange.shade900,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (!formKey.currentState!.validate()) return;
+                Navigator.pop(
+                  dialogContext,
+                  _GitHubRepositoryDraft(
+                    name: repositoryController.text.trim(),
+                    passphrase: passphraseController.text,
+                    weeklyEnabled: enableWeekly,
+                  ),
+                );
+              },
+              child: const Text('创建私有仓库'),
+            ),
+          ],
+        ),
+      ),
+    );
+    repositoryController.dispose();
+    passphraseController.dispose();
+    if (draft == null) return;
+
+    GitHubRepository repository;
+    try {
+      repository = await _githubBackup.createPrivateRepository(draft.name);
+    } catch (error) {
+      final message =
+          error.toString().contains('422') ||
+              error.toString().toLowerCase().contains('already exists')
+          ? '这个仓库名已被使用。请换一个名称后重试。'
+          : error.toString().contains('403')
+          ? 'GitHub 拒绝创建仓库。项目的 GitHub App 需要一次性配置“Repository creation: write”权限；这项配置由项目维护者完成，普通用户不需要注册 App。'
+          : '创建私有仓库失败：$error';
+      _showMessage(message);
+      return;
+    }
+
+    try {
+      var hasAccess = await _githubBackup.hasWriteAccess(
+        repository.owner,
+        repository.name,
+      );
+      if (!hasAccess) {
+        final installed = await _installGitHubAppForRepository(repository);
+        if (!installed) {
+          _showMessage(
+            '仓库 ${repository.fullName} 已创建。完成 GitHub 授权后，可在此继续设置备份。',
+          );
+          return;
+        }
+        hasAccess = await _githubBackup.hasWriteAccess(
+          repository.owner,
+          repository.name,
+        );
+      }
+      if (!hasAccess) {
+        _showMessage(
+          'GitHub App 还没有此仓库的内容写入权限。请回到 GitHub 授权页，只选择 ${repository.fullName} 后重试。',
+        );
+        return;
+      }
+
+      await _githubBackup.configure(
+        owner: repository.owner,
+        repository: repository.name,
+        passphrase: draft.passphrase,
+      );
+      final reminderEnabled = await _githubBackup.setWeeklyEnabled(
+        draft.weeklyEnabled,
+      );
+      await _loadGitHubBackupConfig();
+      if (!mounted) return;
+      var uploaded = false;
+      try {
+        await _githubBackup.uploadNow();
+        uploaded = true;
+        await _loadGitHubBackupConfig();
+      } catch (_) {
+        // Keep the configured target so the user can retry after GitHub is reachable.
+      }
+      _showMessage(
+        uploaded
+            ? reminderEnabled || !draft.weeklyEnabled
+                  ? '已创建 ${repository.fullName}，第一份加密备份已上传。'
+                  : '仓库和加密备份已设置；请允许通知以接收每周提醒。'
+            : '已创建 ${repository.fullName} 并保存设置；当前网络无法上传，稍后可点“立即备份”重试。',
+      );
+    } catch (error) {
+      _showMessage('仓库已创建，但备份设置未完成：$error');
+    }
+  }
+
+  Future<bool> _installGitHubAppForRepository(
+    GitHubRepository repository,
+  ) async {
+    final slug = GitHubAuthService.appSlug;
+    if (!RegExp(r'^[A-Za-z0-9-]+$').hasMatch(slug)) {
+      _showMessage('当前版本未配置 GitHub App 安装链接，请使用应用内的普通仓库设置。');
+      return false;
+    }
+    final installUri = Uri.https('github.com', '/apps/$slug/installations/new');
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('只授权专用仓库'),
+        content: Text(
+          '下一步会打开 GitHub。\n\n1. 选择你的个人账户。\n2. 选择“Only select repositories”。\n3. 只勾选 ${repository.fullName}。\n4. 确认安装后返回本应用，点击“已完成，继续”。\n\n应用只需要向这个私有仓库写入加密备份。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('稍后'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.open_in_browser),
+            label: const Text('打开 GitHub 安装页'),
+          ),
+        ],
+      ),
+    );
+    if (open != true) return false;
+    await launchUrl(installUri, mode: LaunchMode.externalApplication);
+    if (!mounted) return false;
+    final completed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('完成 GitHub 授权'),
+        content: Text(
+          '安装完成后返回此应用。只要你已将 ${repository.fullName} 加入应用可访问的仓库，点“检查并继续”即可。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('稍后'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('检查并继续'),
+          ),
+        ],
+      ),
+    );
+    return completed == true;
   }
 
   void _cancelGitHubAuthentication() {
@@ -411,7 +679,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   Future<void> _installGitHubApp() async {
     final slug = GitHubAuthService.appSlug;
     if (!RegExp(r'^[A-Za-z0-9-]+$').hasMatch(slug)) {
-      _showMessage('构建版本还没有配置 GitHub App Slug。');
+      _showMessage('这个构建版本暂不可打开 GitHub 备份授权页。');
       return;
     }
     final uri = Uri.https('github.com', '/apps/$slug/installations/new');
@@ -824,164 +1092,12 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   }
 
   Widget _buildStatisticsTab() {
-    final monthEntries = _monthEntries;
-    final expense = _total(monthEntries, EntryType.expense);
-    final totals = <String, int>{};
-    for (final entry in monthEntries.where(
-      (e) => e.type == EntryType.expense,
-    )) {
-      totals.update(
-        entry.category,
-        (value) => value + entry.amountCents,
-        ifAbsent: () => entry.amountCents,
-      );
-    }
-    final categories = totals.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-      children: [
-        _monthPicker(),
-        const SizedBox(height: 14),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_monthLabel(_displayMonth)}支出',
-                  style: TextStyle(color: Colors.grey.shade700),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _money(expense),
-                  style: const TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        '月预算',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _editMonthlyBudget,
-                      child: Text(_monthlyBudget == null ? '设置' : '调整'),
-                    ),
-                    if (_monthlyBudget != null)
-                      IconButton(
-                        tooltip: '清除预算',
-                        onPressed: _clearMonthlyBudget,
-                        icon: const Icon(Icons.close, size: 20),
-                      ),
-                  ],
-                ),
-                if (_monthlyBudget == null)
-                  Text(
-                    '设置预算后，可查看本月支出进度。',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                  )
-                else ...[
-                  Text(
-                    '已支出 ${_money(expense)} / ${_money(_monthlyBudget!)}',
-                    style: TextStyle(color: Colors.grey.shade700),
-                  ),
-                  const SizedBox(height: 10),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: LinearProgressIndicator(
-                      value: (expense / _monthlyBudget!).clamp(0.0, 1.0),
-                      minHeight: 8,
-                      color: expense > _monthlyBudget!
-                          ? Colors.red.shade400
-                          : const Color(0xFF287A5B),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    expense > _monthlyBudget!
-                        ? '已超出 ${_money(expense - _monthlyBudget!)}'
-                        : '剩余 ${_money(_monthlyBudget! - expense)}',
-                    style: TextStyle(
-                      color: expense > _monthlyBudget!
-                          ? Colors.red.shade700
-                          : Colors.grey.shade600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 22),
-        _sectionTitle('支出分类'),
-        const SizedBox(height: 8),
-        if (categories.isEmpty)
-          _emptyState(
-            icon: Icons.pie_chart_outline,
-            title: '还没有支出数据',
-            subtitle: '记录支出后，这里会显示分类汇总。',
-          )
-        else
-          ...categories.map((item) {
-            final ratio = expense == 0 ? 0.0 : item.value / expense;
-            final color = _categoryColor(item.key);
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Icon(_categoryIcon(item.key), color: color, size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(child: Text(item.key)),
-                        Text(
-                          '${(ratio * 100).toStringAsFixed(0)}%',
-                          style: TextStyle(color: Colors.grey.shade600),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          _money(item.value),
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: LinearProgressIndicator(
-                        value: ratio,
-                        minHeight: 7,
-                        color: color,
-                        backgroundColor: color.withValues(alpha: 0.12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }),
-      ],
+    return LedgerStatisticsPage(
+      entries: _entries,
+      initialDate: _displayMonth,
+      monthlyBudget: _monthlyBudget,
+      onEditMonthlyBudget: _editMonthlyBudget,
+      onClearMonthlyBudget: _clearMonthlyBudget,
     );
   }
 
@@ -1050,7 +1166,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                   if (!_githubAuth.isConfigured) ...[
                     const SizedBox(height: 10),
                     Text(
-                      '还需配置 GitHub App Client ID。应用不会内置 Client Secret。',
+                      '此构建版本暂未启用 GitHub 连接；本地记账仍可正常使用。',
                       style: TextStyle(
                         color: Colors.grey.shade700,
                         fontSize: 13,
@@ -1058,23 +1174,13 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                     ),
                   ],
                 ] else ...[
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _installGitHubApp,
-                      icon: const Icon(Icons.install_mobile_outlined),
-                      label: const Text('安装或管理 GitHub App'),
-                    ),
-                  ),
-                  if (GitHubAuthService.appSlug.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        '构建时需配置 GITHUB_APP_SLUG；安装时请选择仅一个账本私有仓库。',
-                        style: TextStyle(
-                          color: Colors.grey.shade700,
-                          fontSize: 12,
-                        ),
+                  if (backup != null)
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _installGitHubApp,
+                        icon: const Icon(Icons.manage_accounts_outlined),
+                        label: const Text('管理 GitHub 备份授权'),
                       ),
                     ),
                   const SizedBox(height: 4),
@@ -1112,7 +1218,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                     account == null
                         ? '登录 GitHub 后可连接你指定的私有仓库。'
                         : backup == null
-                        ? '选择私有仓库并设置加密口令。'
+                        ? '创建专用私有仓库，或选择已有私有仓库。'
                         : '${backup.owner}/${backup.repository}\n${backup.weeklyEnabled ? '每周自动备份已开启' : '每周自动备份已暂停'}',
                   ),
                   trailing: IconButton(
@@ -1178,9 +1284,9 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.tonalIcon(
-                      onPressed: _configureGitHubBackup,
+                      onPressed: _promptGitHubBackupSetup,
                       icon: const Icon(Icons.settings_backup_restore),
-                      label: const Text('设置私有仓库'),
+                      label: const Text('设置 GitHub 加密备份'),
                     ),
                   ),
                 ],
@@ -1383,10 +1489,10 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
         leading: CircleAvatar(
-          backgroundColor: _categoryColor(entry.category)
+          backgroundColor: LedgerCategories.color(entry.category)
               .withValues(alpha: 0.12),
-          foregroundColor: _categoryColor(entry.category),
-          child: Icon(_categoryIcon(entry.category), size: 20),
+          foregroundColor: LedgerCategories.color(entry.category),
+          child: Icon(LedgerCategories.icon(entry.category), size: 20),
         ),
         title: Text(
           entry.category,
@@ -1463,31 +1569,6 @@ class _LedgerHomePageState extends State<LedgerHomePage>
 
   static String _formatDateTime(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-
-  static IconData _categoryIcon(String category) => switch (category) {
-    '餐饮' => Icons.restaurant,
-    '交通' => Icons.directions_bus,
-    '购物' => Icons.shopping_bag_outlined,
-    '居住' => Icons.home_outlined,
-    '娱乐' => Icons.movie_outlined,
-    '医疗' => Icons.medical_services_outlined,
-    '工资' => Icons.account_balance_wallet_outlined,
-    '奖金' => Icons.card_giftcard_outlined,
-    '兼职' => Icons.work_outline,
-    _ => Icons.category_outlined,
-  };
-
-  static Color _categoryColor(String category) => switch (category) {
-    '餐饮' => const Color(0xFFE28A45),
-    '交通' => const Color(0xFF4C83C3),
-    '购物' => const Color(0xFF9A6CC1),
-    '居住' => const Color(0xFF558C77),
-    '娱乐' => const Color(0xFFCB6A77),
-    '医疗' => const Color(0xFF4E9CA0),
-    '工资' => const Color(0xFF287A5B),
-    '奖金' => const Color(0xFFB28B3B),
-    _ => const Color(0xFF818A84),
-  };
 }
 
 class _GitHubBackupSetup {
@@ -1500,6 +1581,18 @@ class _GitHubBackupSetup {
 
   final String owner;
   final String repository;
+  final String passphrase;
+  final bool weeklyEnabled;
+}
+
+class _GitHubRepositoryDraft {
+  const _GitHubRepositoryDraft({
+    required this.name,
+    required this.passphrase,
+    required this.weeklyEnabled,
+  });
+
+  final String name;
   final String passphrase;
   final bool weeklyEnabled;
 }
@@ -1521,30 +1614,55 @@ class _EntryFormState extends State<_EntryForm> {
   String _category = '餐饮';
   DateTime _date = DateTime.now();
 
-  static const _expenseCategories = ['餐饮', '交通', '购物', '居住', '娱乐', '医疗', '其他'];
-  static const _incomeCategories = ['工资', '奖金', '兼职', '其他'];
+  List<String> _customExpenseCategories = const [];
+  List<String> _customIncomeCategories = const [];
 
   List<String> get _categories {
-    final categories = _type == EntryType.expense
-        ? _expenseCategories
-        : _incomeCategories;
+    final builtIns = LedgerCategories.builtIns(_type);
+    final custom = _type == EntryType.expense
+        ? _customExpenseCategories
+        : _customIncomeCategories;
     final existingCategory = widget.initialEntry?.category;
-    if (existingCategory != null && !categories.contains(existingCategory)) {
-      return [...categories, existingCategory];
-    }
-    return categories;
+    return {
+      ...builtIns.where((category) => category != LedgerCategories.other),
+      ...custom,
+      if (existingCategory != null &&
+          existingCategory != LedgerCategories.other &&
+          !builtIns.contains(existingCategory) &&
+          !custom.contains(existingCategory))
+        existingCategory,
+      LedgerCategories.other,
+    }.toList(growable: false);
   }
+
+  List<String> get _customCategories => _type == EntryType.expense
+      ? _customExpenseCategories
+      : _customIncomeCategories;
 
   @override
   void initState() {
     super.initState();
     final entry = widget.initialEntry;
-    if (entry == null) return;
-    _type = entry.type;
-    _category = entry.category;
-    _date = entry.date;
-    _amountController.text = (entry.amountCents / 100).toStringAsFixed(2);
-    _noteController.text = entry.note;
+    if (entry != null) {
+      _type = entry.type;
+      _category = entry.category;
+      _date = entry.date;
+      _amountController.text = (entry.amountCents / 100).toStringAsFixed(2);
+      _noteController.text = entry.note;
+    }
+    _loadCustomCategories();
+  }
+
+  Future<void> _loadCustomCategories() async {
+    final categories = await Future.wait([
+      LedgerDatabase.instance.getCustomCategories(EntryType.expense),
+      LedgerDatabase.instance.getCustomCategories(EntryType.income),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _customExpenseCategories = categories[0];
+      _customIncomeCategories = categories[1];
+    });
   }
 
   @override
@@ -1557,7 +1675,147 @@ class _EntryFormState extends State<_EntryForm> {
   void _changeType(EntryType type) {
     setState(() {
       _type = type;
-      _category = _categories.first;
+      _category = LedgerCategories.builtIns(type).first;
+    });
+  }
+
+  Future<void> _chooseOtherCategory({bool createCustom = false}) async {
+    final categoryController = TextEditingController(
+      text: _category == LedgerCategories.other || createCustom
+          ? ''
+          : _category,
+    );
+    final noteController = TextEditingController(text: _noteController.text);
+    final formKey = GlobalKey<FormState>();
+    final choice = await showDialog<_OtherCategoryChoice>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(createCustom ? '添加自定义分类' : '其他分类'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: categoryController,
+                autofocus: createCustom,
+                maxLength: 16,
+                decoration: InputDecoration(
+                  labelText: createCustom ? '分类名称' : '自定义分类（可留空）',
+                  hintText: '例如：家庭聚餐',
+                  border: const OutlineInputBorder(),
+                  counterText: '',
+                ),
+                validator: (value) {
+                  final name = (value ?? '').trim();
+                  if (createCustom && name.isEmpty) return '请输入分类名称';
+                  if (name.runes.length > 16) return '分类名称最多 16 个字符';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: noteController,
+                maxLength: 60,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: '备注（选填）',
+                  hintText: '例如：给家人买的水果',
+                  border: OutlineInputBorder(),
+                  counterText: '',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '自定义分类会保存在本机，之后记账时也能直接选择。',
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (!formKey.currentState!.validate()) return;
+              final name = categoryController.text.trim();
+              Navigator.pop(
+                dialogContext,
+                _OtherCategoryChoice(
+                  category: name.isEmpty ? LedgerCategories.other : name,
+                  note: noteController.text.trim(),
+                ),
+              );
+            },
+            child: Text(createCustom ? '添加并选择' : '完成'),
+          ),
+        ],
+      ),
+    );
+    categoryController.dispose();
+    noteController.dispose();
+    if (choice == null) return;
+
+    final isCustom = !LedgerCategories.builtIns(_type)
+        .contains(choice.category);
+    if (isCustom) {
+      await LedgerDatabase.instance.addCustomCategory(_type, choice.category);
+      if (!mounted) return;
+      setState(() {
+        if (_type == EntryType.expense) {
+          _customExpenseCategories = {
+            ..._customExpenseCategories,
+            choice.category,
+          }.toList()..sort();
+        } else {
+          _customIncomeCategories = {
+            ..._customIncomeCategories,
+            choice.category,
+          }.toList()..sort();
+        }
+      });
+    }
+    setState(() {
+      _category = choice.category;
+      _noteController.text = choice.note;
+    });
+  }
+
+  Future<void> _removeCustomCategory(String category) async {
+    final remove = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('移除自定义分类？'),
+        content: Text('“$category”将不再出现在新账单分类中，已有账单不会被修改。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('移除'),
+          ),
+        ],
+      ),
+    );
+    if (remove != true) return;
+    await LedgerDatabase.instance.removeCustomCategory(_type, category);
+    if (!mounted) return;
+    setState(() {
+      if (_type == EntryType.expense) {
+        _customExpenseCategories = _customExpenseCategories
+            .where((item) => item != category)
+            .toList(growable: false);
+      } else {
+        _customIncomeCategories = _customIncomeCategories
+            .where((item) => item != category)
+            .toList(growable: false);
+      }
+      if (_category == category) _category = LedgerCategories.other;
     });
   }
 
@@ -1658,20 +1916,84 @@ class _EntryFormState extends State<_EntryForm> {
                 },
               ),
               const SizedBox(height: 18),
-              const Text('分类', style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: _categories
-                    .map(
-                      (category) => ChoiceChip(
-                        label: Text(category),
-                        selected: _category == category,
-                        onSelected: (_) => setState(() => _category = category),
+              Row(
+                children: [
+                  const Text(
+                    '分类',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () => _chooseOtherCategory(createCustom: true),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('自定义分类'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  crossAxisSpacing: 6,
+                  mainAxisSpacing: 4,
+                  childAspectRatio: 0.9,
+                ),
+                itemCount: _categories.length,
+                itemBuilder: (context, index) {
+                  final category = _categories[index];
+                  final isCustom = _customCategories.contains(category);
+                  final selected = _category == category;
+                  return Tooltip(
+                    message: isCustom ? '长按可移除自定义分类' : category,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () => category == LedgerCategories.other
+                          ? _chooseOtherCategory()
+                          : setState(() => _category = category),
+                      onLongPress: isCustom
+                          ? () => _removeCustomCategory(category)
+                          : null,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? const Color(0xFFFFE28A)
+                              : const Color(0xFFF5F5F5),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: selected
+                                ? const Color(0xFFE3A900)
+                                : Colors.transparent,
+                            width: 1.4,
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              LedgerCategories.icon(category),
+                              size: 24,
+                              color: LedgerCategories.color(category),
+                            ),
+                            const SizedBox(height: 5),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                              ),
+                              child: Text(
+                                category,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    )
-                    .toList(growable: false),
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 12),
               ListTile(
@@ -1711,4 +2033,11 @@ class _EntryFormState extends State<_EntryForm> {
 
   static String _dateLabel(DateTime date) =>
       '${date.year}年${date.month}月${date.day}日';
+}
+
+class _OtherCategoryChoice {
+  const _OtherCategoryChoice({required this.category, required this.note});
+
+  final String category;
+  final String note;
 }

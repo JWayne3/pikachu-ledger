@@ -66,7 +66,7 @@ class GitHubAuthService {
   Future<GitHubDeviceFlow> beginSignIn({int? repositoryId}) async {
     if (!isConfigured) {
       throw const GitHubAuthException(
-        '尚未配置 GitHub App Client ID。请按项目文档注册 GitHub App 后重新构建。',
+        '这个构建版本还没有接入皮卡丘记账的 GitHub 授权服务。这不是你的 GitHub 账号问题；本地记账不受影响。',
       );
     }
 
