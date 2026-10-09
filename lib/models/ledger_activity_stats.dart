@@ -23,11 +23,11 @@ class LedgerActivityStats {
     var day = latestDay;
     while (recordedDays.contains(day)) {
       streak++;
-      day = DateTime(day.year, day.month, day.day - 1);
+      day = DateTime.utc(day.year, day.month, day.day - 1);
     }
     return streak;
   }
 
   static DateTime _calendarDay(DateTime date) =>
-      DateTime(date.year, date.month, date.day);
+      DateTime.utc(date.year, date.month, date.day);
 }
