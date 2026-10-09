@@ -35,4 +35,10 @@ jobs:
         run: flutter analyze
 
       - name: Build Android debug APK
-        run: flutter build apk --debug
+        env:
+          PIKACHU_APP_CLIENT_ID: ${{ vars.PIKACHU_GITHUB_APP_CLIENT_ID }}
+          PIKACHU_APP_SLUG: ${{ vars.PIKACHU_GITHUB_APP_SLUG }}
+        run: >-
+          flutter build apk --debug
+          --dart-define="GITHUB_APP_CLIENT_ID=$PIKACHU_APP_CLIENT_ID"
+          --dart-define="GITHUB_APP_SLUG=$PIKACHU_APP_SLUG"

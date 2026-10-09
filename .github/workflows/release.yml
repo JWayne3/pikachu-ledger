@@ -35,16 +35,16 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          GITHUB_APP_CLIENT_ID: ${{ vars.GITHUB_APP_CLIENT_ID }}
-          GITHUB_APP_SLUG: ${{ vars.GITHUB_APP_SLUG }}
+          PIKACHU_APP_CLIENT_ID: ${{ vars.PIKACHU_GITHUB_APP_CLIENT_ID }}
+          PIKACHU_APP_SLUG: ${{ vars.PIKACHU_GITHUB_APP_SLUG }}
         run: |
           set -eu
           test -n "$ANDROID_KEYSTORE_BASE64" || { echo 'Missing secret ANDROID_KEYSTORE_BASE64'; exit 1; }
           test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo 'Missing secret ANDROID_KEYSTORE_PASSWORD'; exit 1; }
           test -n "$ANDROID_KEY_ALIAS" || { echo 'Missing secret ANDROID_KEY_ALIAS'; exit 1; }
           test -n "$ANDROID_KEY_PASSWORD" || { echo 'Missing secret ANDROID_KEY_PASSWORD'; exit 1; }
-          test -n "$GITHUB_APP_CLIENT_ID" || { echo 'Missing repository variable GITHUB_APP_CLIENT_ID'; exit 1; }
-          test -n "$GITHUB_APP_SLUG" || { echo 'Missing repository variable GITHUB_APP_SLUG'; exit 1; }
+          test -n "$PIKACHU_APP_CLIENT_ID" || { echo 'Missing repository variable PIKACHU_GITHUB_APP_CLIENT_ID'; exit 1; }
+          test -n "$PIKACHU_APP_SLUG" || { echo 'Missing repository variable PIKACHU_GITHUB_APP_SLUG'; exit 1; }
           if ! printf '%s' "$ANDROID_APPLICATION_ID" | grep -Eq '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'; then
             echo 'ANDROID_APPLICATION_ID must be a valid reverse-domain Android package name'
             exit 1
@@ -82,12 +82,12 @@ jobs:
       - name: Build signed release APK
         env:
           ANDROID_APPLICATION_ID: ${{ vars.ANDROID_APPLICATION_ID || 'io.github.jwayne3.pikachuledger' }}
-          GITHUB_APP_CLIENT_ID: ${{ vars.GITHUB_APP_CLIENT_ID }}
-          GITHUB_APP_SLUG: ${{ vars.GITHUB_APP_SLUG }}
+          PIKACHU_APP_CLIENT_ID: ${{ vars.PIKACHU_GITHUB_APP_CLIENT_ID }}
+          PIKACHU_APP_SLUG: ${{ vars.PIKACHU_GITHUB_APP_SLUG }}
         run: >-
           flutter build apk --release
-          --dart-define="GITHUB_APP_CLIENT_ID=$GITHUB_APP_CLIENT_ID"
-          --dart-define="GITHUB_APP_SLUG=$GITHUB_APP_SLUG"
+          --dart-define="GITHUB_APP_CLIENT_ID=$PIKACHU_APP_CLIENT_ID"
+          --dart-define="GITHUB_APP_SLUG=$PIKACHU_APP_SLUG"
 
       - name: Publish GitHub Release
         env:

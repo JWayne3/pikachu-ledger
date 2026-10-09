@@ -40,8 +40,8 @@ PowerShell 编码命令：
 
 | 类型 | 名称 | 值 |
 | --- | --- | --- |
-| Variable | `GITHUB_APP_CLIENT_ID` | GitHub App Client ID |
-| Variable | `GITHUB_APP_SLUG` | GitHub App URL slug |
+| Variable | `PIKACHU_GITHUB_APP_CLIENT_ID` | GitHub App Client ID |
+| Variable | `PIKACHU_GITHUB_APP_SLUG` | GitHub App URL slug |
 
 Android Device Flow 不需要 Client Secret；不要把 Client Secret 或个人访问令牌放进客户端。GitHub App 的 Client ID 和 slug 是公开配置值。由维护者配置一次后，发布 APK 会包含它们，普通用户不需要注册 GitHub App。
 
@@ -76,8 +76,8 @@ keyPassword=replace-me
 
 ```powershell
 flutter build apk --release `
-  --dart-define=GITHUB_APP_CLIENT_ID=Iv1.example `
-  --dart-define=GITHUB_APP_SLUG=pikachu-ledger
+  --dart-define=GITHUB_APP_CLIENT_ID=Iv23ctLQ3eE96O7iilWP `
+  --dart-define=GITHUB_APP_SLUG=pikachu-ledger-backup
 ```
 
 如果尚未配置签名，Gradle 不会拿公开共享的 Android Debug 密钥冒充正式签名；这种本地 release APK 不适合发布或供普通用户升级安装。

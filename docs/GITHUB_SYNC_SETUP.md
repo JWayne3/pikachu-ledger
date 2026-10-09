@@ -32,10 +32,11 @@ Client ID 是 GitHub 用来识别“哪个应用正在请求授权”的公开�
 
    | 名称 | 值 |
    | --- | --- |
-   | `GITHUB_APP_CLIENT_ID` | 第 4 步得到的公开 Client ID |
-   | `GITHUB_APP_SLUG` | GitHub App URL 中的 slug |
+   | `PIKACHU_GITHUB_APP_CLIENT_ID` | 第 4 步得到的公开 Client ID |
+   | `PIKACHU_GITHUB_APP_SLUG` | GitHub App URL 中的 slug |
 
    正式发布工作流会把这两个公开值编入 APK。它们不是 Actions Secrets。
+   GitHub 保留 `GITHUB_` 前缀，因此仓库变量使用 `PIKACHU_GITHUB_` 前缀；工作流会再映射为 Dart define。
 
 ## 本地开发构建
 
@@ -43,8 +44,8 @@ Client ID 是 GitHub 用来识别“哪个应用正在请求授权”的公开�
 
 ```powershell
 flutter run `
-  --dart-define=GITHUB_APP_CLIENT_ID=Iv1.example `
-  --dart-define=GITHUB_APP_SLUG=pikachu-ledger
+  --dart-define=GITHUB_APP_CLIENT_ID=Iv23ctLQ3eE96O7iilWP `
+  --dart-define=GITHUB_APP_SLUG=pikachu-ledger-backup
 ```
 
 普通用户不用执行这些命令，也不用阅读或修改本文件才能登录。
