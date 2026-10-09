@@ -291,108 +291,10 @@ class _LedgerHomePageState extends State<LedgerHomePage>
 
   Future<void> _configureGitHubBackup() async {
     final current = _githubBackupConfig;
-    final ownerController = TextEditingController(text: current?.owner ?? '');
-    final repositoryController = TextEditingController(
-      text: current?.repository ?? '',
-    );
-    final passphraseController = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-    var enableWeekly = current?.weeklyEnabled ?? true;
-
     final setup = await showDialog<_GitHubBackupSetup>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('设置 GitHub 加密备份'),
-          content: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    '账本会先在本机加密，再写入你选择的私有仓库。备份文件不会公开；请记住加密口令，换机恢复时需要它。',
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: ownerController,
-                    decoration: const InputDecoration(
-                      labelText: '仓库所有者（用户名或组织）',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) =>
-                        value == null || value.trim().isEmpty ? '请输入所有者' : null,
-                  ),
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: repositoryController,
-                    decoration: const InputDecoration(
-                      labelText: '私有仓库名',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) =>
-                        value == null || value.trim().isEmpty ? '请输入仓库名' : null,
-                  ),
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: passphraseController,
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      labelText: current == null ? '加密口令（至少 12 个字符）' : '新加密口令',
-                      helperText: current == null
-                          ? '应用会把口令保存在 Android 加密存储中，用于自动备份。'
-                          : '留空保留现有口令；换机恢复需要你记住它。',
-                      border: const OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if ((value ?? '').isEmpty && current != null) return null;
-                      if ((value ?? '').runes.length < 12) {
-                        return '口令至少需要 12 个字符';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 4),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: enableWeekly,
-                    onChanged: (value) =>
-                        setDialogState(() => enableWeekly = value ?? false),
-                    title: const Text('开启每周自动备份与提醒'),
-                    subtitle: const Text('Android 会在网络可用时调度上传，时间可能有延迟。'),
-                    controlAffinity: ListTileControlAffinity.leading,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (!formKey.currentState!.validate()) return;
-                Navigator.pop(
-                  dialogContext,
-                  _GitHubBackupSetup(
-                    owner: ownerController.text.trim(),
-                    repository: repositoryController.text.trim(),
-                    passphrase: passphraseController.text,
-                    weeklyEnabled: enableWeekly,
-                  ),
-                );
-              },
-              child: const Text('验证并保存'),
-            ),
-          ],
-        ),
-      ),
+      builder: (_) => _GitHubBackupSetupDialog(current: current),
     );
-    ownerController.dispose();
-    repositoryController.dispose();
-    passphraseController.dispose();
     if (setup == null) return;
 
     try {
@@ -1586,6 +1488,132 @@ class _GitHubBackupSetup {
   final String repository;
   final String passphrase;
   final bool weeklyEnabled;
+}
+
+class _GitHubBackupSetupDialog extends StatefulWidget {
+  const _GitHubBackupSetupDialog({required this.current});
+
+  final GitHubBackupConfig? current;
+
+  @override
+  State<_GitHubBackupSetupDialog> createState() =>
+      _GitHubBackupSetupDialogState();
+}
+
+class _GitHubBackupSetupDialogState extends State<_GitHubBackupSetupDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _ownerController;
+  late final TextEditingController _repositoryController;
+  final _passphraseController = TextEditingController();
+  late bool _enableWeekly;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownerController = TextEditingController(text: widget.current?.owner ?? '');
+    _repositoryController = TextEditingController(
+      text: widget.current?.repository ?? '',
+    );
+    _enableWeekly = widget.current?.weeklyEnabled ?? true;
+  }
+
+  @override
+  void dispose() {
+    _ownerController.dispose();
+    _repositoryController.dispose();
+    _passphraseController.dispose();
+    super.dispose();
+  }
+
+  void _cancel() {
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop(
+      _GitHubBackupSetup(
+        owner: _ownerController.text.trim(),
+        repository: _repositoryController.text.trim(),
+        passphrase: _passphraseController.text,
+        weeklyEnabled: _enableWeekly,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isNewSetup = widget.current == null;
+    return AlertDialog(
+      title: const Text('设置 GitHub 加密备份'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('账本会先在本机加密，再写入你选择的私有仓库。备份文件不会公开；请记住加密口令，换机恢复时需要它。'),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _ownerController,
+                decoration: const InputDecoration(
+                  labelText: '仓库所有者（用户名或组织）',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) =>
+                    value == null || value.trim().isEmpty ? '请输入所有者' : null,
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _repositoryController,
+                decoration: const InputDecoration(
+                  labelText: '私有仓库名',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) =>
+                    value == null || value.trim().isEmpty ? '请输入仓库名' : null,
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _passphraseController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: isNewSetup ? '加密口令（至少 12 个字符）' : '新加密口令',
+                  helperText: isNewSetup
+                      ? '应用会把口令保存在 Android 加密存储中，用于自动备份。'
+                      : '留空保留现有口令；换机恢复需要你记住它。',
+                  border: const OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if ((value ?? '').isEmpty && !isNewSetup) return null;
+                  if ((value ?? '').runes.length < 12) {
+                    return '口令至少需要 12 个字符';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 4),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _enableWeekly,
+                onChanged: (value) =>
+                    setState(() => _enableWeekly = value ?? false),
+                title: const Text('开启每周自动备份与提醒'),
+                subtitle: const Text('Android 会在网络可用时调度上传，时间可能有延迟。'),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: _cancel, child: const Text('取消')),
+        FilledButton(onPressed: _submit, child: const Text('验证并保存')),
+      ],
+    );
+  }
 }
 
 class _EntryForm extends StatefulWidget {
