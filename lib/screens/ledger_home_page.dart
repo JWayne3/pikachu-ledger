@@ -101,7 +101,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '按下面步骤连接 GitHub：\n1. 点“打开 GitHub”进入授权页。\n2. 输入下面的一次性验证码并确认授权。\n3. 返回应用；只有你确认后，应用才会创建专用私有仓库。',
+                '按下面步骤连接 GitHub：\n1. 点“打开 GitHub”进入授权页。\n2. 输入下面的一次性验证码并确认授权。\n3. 返回应用后，选择或先手动创建一个私有仓库，再设置加密备份。',
               ),
               const SizedBox(height: 12),
               Center(
@@ -180,7 +180,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       builder: (dialogContext) => AlertDialog(
         title: const Text('GitHub 已连接'),
         content: const Text(
-          '账单默认只保存在手机。本应用可以为你创建一个专用的私有仓库，并且只上传本机加密后的备份。\n\n你可以现在创建，也可以稍后再设置；不创建仓库不会影响本地记账。',
+          '账单默认只保存在手机。请先在 GitHub 创建一个私有仓库（可见性选择 Private），或使用已有的私有仓库。创建后回到账户页点设置按钮，填写仓库信息和加密口令。GitHub 会要求将 App 安装到仓库；请选择 Only select repositories，并只勾选备份仓库。',
         ),
         actions: [
           TextButton(
@@ -193,189 +193,23 @@ class _LedgerHomePageState extends State<LedgerHomePage>
           ),
           FilledButton.icon(
             onPressed: () => Navigator.pop(dialogContext, 'create'),
-            icon: const Icon(Icons.lock_outline),
-            label: const Text('创建专用私有仓库'),
+            icon: const Icon(Icons.open_in_browser),
+            label: const Text('打开 GitHub 创建私有仓库'),
           ),
         ],
       ),
     );
     if (!mounted) return;
     if (choice == 'create') {
-      await _createGitHubBackupRepository();
+      final opened = await launchUrl(
+        Uri.https('github.com', '/new'),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened && mounted) {
+        _showMessage('无法打开 GitHub。请在浏览器访问 github.com/new 创建私有仓库。');
+      }
     } else if (choice == 'existing') {
       await _configureGitHubBackup();
-    }
-  }
-
-  Future<void> _createGitHubBackupRepository() async {
-    final account = _githubAccount;
-    if (account == null) return;
-    final repositoryController = TextEditingController(
-      text: 'pikachu-ledger-data-${account.login.toLowerCase()}',
-    );
-    final passphraseController = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-    var enableWeekly = true;
-    final draft = await showDialog<_GitHubRepositoryDraft>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('创建加密备份仓库'),
-          content: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    '应用会在你的 GitHub 账户创建一个私有仓库。上传前账单会在手机上加密；仓库名称和备份口令都可以自定义。',
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: repositoryController,
-                    maxLength: 100,
-                    decoration: const InputDecoration(
-                      labelText: '私有仓库名称',
-                      border: OutlineInputBorder(),
-                      counterText: '',
-                    ),
-                    validator: (value) {
-                      final name = (value ?? '').trim();
-                      if (!RegExp(r'^[A-Za-z0-9_.-]{1,100}$').hasMatch(name)) {
-                        return '仅使用英文、数字、句点、下划线或连字符';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: passphraseController,
-                    obscureText: true,
-                    maxLength: 80,
-                    decoration: const InputDecoration(
-                      labelText: '备份加密口令（至少 12 个字符）',
-                      border: OutlineInputBorder(),
-                      counterText: '',
-                    ),
-                    validator: (value) => (value ?? '').runes.length < 12
-                        ? '口令至少需要 12 个字符'
-                        : null,
-                  ),
-                  const SizedBox(height: 4),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: enableWeekly,
-                    onChanged: (value) =>
-                        setDialogState(() => enableWeekly = value ?? false),
-                    title: const Text('开启每周加密备份与提醒'),
-                    subtitle: const Text('时间由 Android 系统调度，联网后运行。'),
-                    controlAffinity: ListTileControlAffinity.leading,
-                  ),
-                  Text(
-                    '请记住口令。忘记口令后，任何人都无法解密仓库里的账单。',
-                    style: TextStyle(
-                      color: Colors.orange.shade900,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (!formKey.currentState!.validate()) return;
-                Navigator.pop(
-                  dialogContext,
-                  _GitHubRepositoryDraft(
-                    name: repositoryController.text.trim(),
-                    passphrase: passphraseController.text,
-                    weeklyEnabled: enableWeekly,
-                  ),
-                );
-              },
-              child: const Text('创建私有仓库'),
-            ),
-          ],
-        ),
-      ),
-    );
-    repositoryController.dispose();
-    passphraseController.dispose();
-    if (draft == null) return;
-
-    GitHubRepository repository;
-    try {
-      repository = await _githubBackup.createPrivateRepository(draft.name);
-    } catch (error) {
-      final message =
-          error.toString().contains('422') ||
-              error.toString().toLowerCase().contains('already exists')
-          ? '这个仓库名已被使用。请换一个名称后重试。'
-          : error.toString().contains('403')
-          ? 'GitHub 拒绝创建仓库。项目的 GitHub App 需要一次性配置“Repository creation: write”权限；这项配置由项目维护者完成，普通用户不需要注册 App。'
-          : '创建私有仓库失败：$error';
-      _showMessage(message);
-      return;
-    }
-
-    try {
-      var hasAccess = await _githubBackup.hasWriteAccess(
-        repository.owner,
-        repository.name,
-      );
-      if (!hasAccess) {
-        final installed = await _installGitHubAppForRepository(repository);
-        if (!installed) {
-          _showMessage(
-            '仓库 ${repository.fullName} 已创建。完成 GitHub 授权后，可在此继续设置备份。',
-          );
-          return;
-        }
-        hasAccess = await _githubBackup.hasWriteAccess(
-          repository.owner,
-          repository.name,
-        );
-      }
-      if (!hasAccess) {
-        _showMessage(
-          'GitHub App 还没有此仓库的内容写入权限。请回到 GitHub 授权页，只选择 ${repository.fullName} 后重试。',
-        );
-        return;
-      }
-
-      await _githubBackup.configure(
-        owner: repository.owner,
-        repository: repository.name,
-        passphrase: draft.passphrase,
-      );
-      final reminderEnabled = await _githubBackup.setWeeklyEnabled(
-        draft.weeklyEnabled,
-      );
-      await _loadGitHubBackupConfig();
-      if (!mounted) return;
-      var uploaded = false;
-      try {
-        await _githubBackup.uploadNow();
-        uploaded = true;
-        await _loadGitHubBackupConfig();
-      } catch (_) {
-        // Keep the configured target so the user can retry after GitHub is reachable.
-      }
-      _showMessage(
-        uploaded
-            ? reminderEnabled || !draft.weeklyEnabled
-                  ? '已创建 ${repository.fullName}，第一份加密备份已上传。'
-                  : '仓库和加密备份已设置；请允许通知以接收每周提醒。'
-            : '已创建 ${repository.fullName} 并保存设置；当前网络无法上传，稍后可点“立即备份”重试。',
-      );
-    } catch (error) {
-      _showMessage('仓库已创建，但备份设置未完成：$error');
     }
   }
 
@@ -391,7 +225,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     final open = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('只授权专用仓库'),
+        title: const Text('将 App 安装到此仓库'),
         content: Text(
           '下一步会打开 GitHub。\n\n1. 选择你的个人账户。\n2. 选择“Only select repositories”。\n3. 只勾选 ${repository.fullName}。\n4. 确认安装后返回本应用，点击“已完成，继续”。\n\n应用只需要向这个私有仓库写入加密备份。',
         ),
@@ -414,7 +248,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     final completed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('完成 GitHub 授权'),
+        title: const Text('确认 GitHub App 安装'),
         content: Text(
           '安装完成后返回此应用。只要你已将 ${repository.fullName} 加入应用可访问的仓库，点“检查并继续”即可。',
         ),
@@ -425,7 +259,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('检查并继续'),
+            child: const Text('已安装，检查权限'),
           ),
         ],
       ),
@@ -562,6 +396,27 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     if (setup == null) return;
 
     try {
+      final repository = GitHubRepository(
+        owner: setup.owner,
+        name: setup.repository,
+      );
+      var hasWriteAccess = await _githubBackup.hasWriteAccess(
+        repository.owner,
+        repository.name,
+      );
+      if (!hasWriteAccess) {
+        final installed = await _installGitHubAppForRepository(repository);
+        if (!installed) return;
+        hasWriteAccess = await _githubBackup.hasWriteAccess(
+          repository.owner,
+          repository.name,
+        );
+      }
+      if (!hasWriteAccess) {
+        throw const GitHubBackupException(
+          'GitHub App 仍没有此仓库的内容写入权限。请在安装页只选择该私有仓库后重试。',
+        );
+      }
       await _githubBackup.configure(
         owner: setup.owner,
         repository: setup.repository,
@@ -1366,7 +1221,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                     account == null
                         ? '登录 GitHub 后可连接你指定的私有仓库。'
                         : backup == null
-                        ? '创建专用私有仓库，或选择已有私有仓库。'
+                        ? '请先创建或选择私有仓库，再设置加密备份。'
                         : '${backup.owner}/${backup.repository}\n${backup.weeklyEnabled ? '每周自动备份已开启' : '每周自动备份已暂停'}',
                   ),
                   trailing: IconButton(
@@ -1729,18 +1584,6 @@ class _GitHubBackupSetup {
 
   final String owner;
   final String repository;
-  final String passphrase;
-  final bool weeklyEnabled;
-}
-
-class _GitHubRepositoryDraft {
-  const _GitHubRepositoryDraft({
-    required this.name,
-    required this.passphrase,
-    required this.weeklyEnabled,
-  });
-
-  final String name;
   final String passphrase;
   final bool weeklyEnabled;
 }

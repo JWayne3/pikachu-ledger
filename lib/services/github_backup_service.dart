@@ -118,42 +118,6 @@ class GitHubBackupService {
     await _storage.write(key: _passphraseKey, value: storedPassphrase);
   }
 
-  Future<GitHubRepository> createPrivateRepository(String name) async {
-    final normalized = name.trim();
-    if (!RegExp(r'^[A-Za-z0-9_.-]{1,100}$').hasMatch(normalized)) {
-      throw const GitHubBackupException(
-        '仓库名只能包含字母、数字、句点、下划线和连字符，长度不超过 100 个字符。',
-      );
-    }
-    final token = await _requiredToken();
-    final response = await _client
-        .post(
-          Uri.https('api.github.com', '/user/repos'),
-          headers: _headers(token),
-          body: jsonEncode({
-            'name': normalized,
-            'description': '皮卡丘记账的个人加密数据备份。',
-            'private': true,
-            'auto_init': true,
-            'has_issues': false,
-            'has_projects': false,
-            'has_wiki': false,
-          }),
-        )
-        .timeout(_requestTimeout);
-    final data = _decodeJson(response);
-    final owner = data['owner'];
-    final ownerLogin = owner is Map ? owner['login'] : null;
-    final repositoryName = data['name'];
-    if (ownerLogin is! String || repositoryName is! String) {
-      throw const GitHubBackupException('GitHub 创建仓库后返回了无效信息。');
-    }
-    if (data['private'] != true) {
-      throw const GitHubBackupException('GitHub 创建的仓库不是私有仓库，已停止备份设置。');
-    }
-    return GitHubRepository(owner: ownerLogin, name: repositoryName);
-  }
-
   Future<bool> hasWriteAccess(String owner, String repository) async {
     final token = await _requiredToken();
     final response = await _client
@@ -336,7 +300,16 @@ class GitHubBackupService {
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final message = decoded['message'] ?? 'HTTP ${response.statusCode}';
-      throw GitHubBackupException('GitHub 请求失败：$message');
+      final acceptedPermissions =
+          response.headers['x-accepted-github-permissions'];
+      final requestId = response.headers['x-github-request-id'];
+      final details = <String>[
+        'HTTP ${response.statusCode}',
+        if (acceptedPermissions != null && acceptedPermissions.isNotEmpty)
+          '接口要求权限：$acceptedPermissions',
+        if (requestId != null && requestId.isNotEmpty) '请求编号：$requestId',
+      ];
+      throw GitHubBackupException('GitHub 请求失败：$message（${details.join('；')}）');
     }
     return decoded;
   }

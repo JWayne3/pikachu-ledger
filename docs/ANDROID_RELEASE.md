@@ -36,7 +36,7 @@ PowerShell 编码命令：
 
 ### 3. 配置 GitHub 登录
 
-按 [GitHub 登录与加密备份设置](GITHUB_SYNC_SETUP.md) 为项目创建公开 GitHub App，启用 Device Flow，并配置 `Repository creation: write` 与 `Contents: write`。普通用户授权时可以把仓库访问限定到皮卡丘记账专用的私有仓库。将下列公开值添加为 Actions 仓库变量：
+按 [GitHub 登录与加密备份设置](GITHUB_SYNC_SETUP.md) 为项目创建公开 GitHub App，启用 Device Flow，并配置 `Contents: write`。不需要 `Repository creation: write`；普通用户会在 GitHub 手动创建或选择私有仓库，并把 App 访问限定到该仓库。将下列公开值添加为 Actions 仓库变量：
 
 | 类型 | 名称 | 值 |
 | --- | --- | --- |
