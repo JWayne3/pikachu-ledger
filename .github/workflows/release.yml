@@ -30,7 +30,7 @@ jobs:
 
       - name: Validate release settings
         env:
-          ANDROID_APPLICATION_ID: ${{ vars.ANDROID_APPLICATION_ID }}
+          ANDROID_APPLICATION_ID: ${{ vars.ANDROID_APPLICATION_ID || 'io.github.jwayne3.pikachuledger' }}
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -39,7 +39,6 @@ jobs:
           GITHUB_APP_SLUG: ${{ vars.GITHUB_APP_SLUG }}
         run: |
           set -eu
-          test -n "$ANDROID_APPLICATION_ID" || { echo 'Missing repository variable ANDROID_APPLICATION_ID'; exit 1; }
           test -n "$ANDROID_KEYSTORE_BASE64" || { echo 'Missing secret ANDROID_KEYSTORE_BASE64'; exit 1; }
           test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo 'Missing secret ANDROID_KEYSTORE_PASSWORD'; exit 1; }
           test -n "$ANDROID_KEY_ALIAS" || { echo 'Missing secret ANDROID_KEY_ALIAS'; exit 1; }
@@ -82,7 +81,7 @@ jobs:
 
       - name: Build signed release APK
         env:
-          ANDROID_APPLICATION_ID: ${{ vars.ANDROID_APPLICATION_ID }}
+          ANDROID_APPLICATION_ID: ${{ vars.ANDROID_APPLICATION_ID || 'io.github.jwayne3.pikachuledger' }}
           GITHUB_APP_CLIENT_ID: ${{ vars.GITHUB_APP_CLIENT_ID }}
           GITHUB_APP_SLUG: ${{ vars.GITHUB_APP_SLUG }}
         run: >-

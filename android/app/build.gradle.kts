@@ -43,7 +43,7 @@ android {
         // ANDROID_APPLICATION_ID in CI. The fallback is only for local development.
         applicationId = signingProperties.getProperty("applicationId")
             ?: System.getenv("ANDROID_APPLICATION_ID")?.takeIf { it.isNotBlank() }
-            ?: "com.example.ledger_app"
+            ?: "io.github.jwayne3.pikachuledger"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

@@ -66,7 +66,7 @@ flutter pub get
 flutter run
 ```
 
-Android 包名仍是开发占位值，正式发布前需要替换。
+Android 正式包名为 `io.github.jwayne3.pikachuledger`；正式发布后不要更改。
 
 ## 品牌素材说明
 

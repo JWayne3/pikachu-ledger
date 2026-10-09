@@ -6,7 +6,7 @@
 
 ### 1. 选定唯一应用包名
 
-把 GitHub 仓库变量 `ANDROID_APPLICATION_ID` 设置为唯一的 Android application ID，例如 `io.github.yourname.pikachuledger`，并将 `yourname` 换成维护者自己的 GitHub 用户名。发布后不要更改，否则 Android 会把它视为另一个应用，用户也无法直接覆盖升级。
+正式包名已设为 `io.github.jwayne3.pikachuledger`。发布后不要更改，否则 Android 会把它视为另一个应用，用户也无法直接覆盖升级。只有确定要更换应用身份时，才设置 GitHub 仓库变量 `ANDROID_APPLICATION_ID` 覆盖默认值。
 
 当前工程的 `com.example.ledger_app` 仅用于本地开发。正式版工作流会拒绝这个占位包名。
 
@@ -26,7 +26,7 @@ keytool -genkeypair -v -keystore pikachu-ledger-release.jks -keyalg RSA -keysize
 | Secret | `ANDROID_KEYSTORE_PASSWORD` | 密钥库密码 |
 | Secret | `ANDROID_KEY_ALIAS` | 上一步使用的 `pikachu-ledger` |
 | Secret | `ANDROID_KEY_PASSWORD` | 密钥密码 |
-| Variable | `ANDROID_APPLICATION_ID` | 已选定的唯一包名 |
+| Variable（可选） | `ANDROID_APPLICATION_ID` | 仅在明确需要覆盖默认包名时设置 |
 
 PowerShell 编码命令：
 
@@ -65,7 +65,7 @@ PowerShell 编码命令：
 在 `android/key.properties` 中填写以下内容；该文件和 `.jks`/`.keystore` 文件已加入忽略列表，不会被 Git 跟踪：
 
 ```properties
-applicationId=io.github.yourname.pikachuledger
+applicationId=io.github.jwayne3.pikachuledger
 storeFile=pikachu-ledger-release.jks
 storePassword=replace-me
 keyAlias=pikachu-ledger
