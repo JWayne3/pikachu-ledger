@@ -1706,84 +1706,17 @@ class _EntryFormState extends State<_EntryForm> {
   }
 
   Future<void> _chooseOtherCategory({bool createCustom = false}) async {
-    final categoryController = TextEditingController(
-      text: _category == LedgerCategories.other || createCustom
-          ? ''
-          : _category,
-    );
-    final noteController = TextEditingController(text: _noteController.text);
-    final formKey = GlobalKey<FormState>();
     final choice = await showDialog<_OtherCategoryChoice>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(createCustom ? '添加自定义分类' : '其他分类'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: categoryController,
-                autofocus: createCustom,
-                maxLength: 16,
-                decoration: InputDecoration(
-                  labelText: createCustom ? '分类名称' : '自定义分类（可留空）',
-                  hintText: '例如：家庭聚餐',
-                  border: const OutlineInputBorder(),
-                  counterText: '',
-                ),
-                validator: (value) {
-                  final name = (value ?? '').trim();
-                  if (createCustom && name.isEmpty) return '请输入分类名称';
-                  if (name.runes.length > 16) return '分类名称最多 16 个字符';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: noteController,
-                maxLength: 60,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: '备注（选填）',
-                  hintText: '例如：给家人买的水果',
-                  border: OutlineInputBorder(),
-                  counterText: '',
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '自定义分类会保存在本机，之后记账时也能直接选择。',
-                style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (!formKey.currentState!.validate()) return;
-              final name = categoryController.text.trim();
-              Navigator.pop(
-                dialogContext,
-                _OtherCategoryChoice(
-                  category: name.isEmpty ? LedgerCategories.other : name,
-                  note: noteController.text.trim(),
-                ),
-              );
-            },
-            child: Text(createCustom ? '添加并选择' : '完成'),
-          ),
-        ],
+      builder: (_) => _OtherCategoryDialog(
+        createCustom: createCustom,
+        initialCategory: _category == LedgerCategories.other || createCustom
+            ? ''
+            : _category,
+        initialNote: _noteController.text,
       ),
     );
-    categoryController.dispose();
-    noteController.dispose();
-    if (choice == null) return;
+    if (choice == null || !mounted) return;
 
     final isCustom = !LedgerCategories.builtIns(_type)
         .contains(choice.category);
@@ -1938,215 +1871,239 @@ class _EntryFormState extends State<_EntryForm> {
         top: 18,
         bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
       ),
-      child: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.initialEntry == null ? '记一笔' : '编辑账单',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
+      child: LayoutBuilder(
+        builder: (context, constraints) => ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: constraints.maxHeight.isFinite
+                ? constraints.maxHeight
+                : MediaQuery.sizeOf(context).height * 0.9,
+          ),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.initialEntry == null ? '记一笔' : '编辑账单',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SegmentedButton<EntryType>(
-                segments: const [
-                  ButtonSegment(
-                    value: EntryType.expense,
-                    label: Text('支出'),
-                    icon: Icon(Icons.north_east),
-                  ),
-                  ButtonSegment(
-                    value: EntryType.income,
-                    label: Text('收入'),
-                    icon: Icon(Icons.south_west),
-                  ),
-                ],
-                selected: {_type},
-                style: SegmentedButton.styleFrom(enableFeedback: false),
-                onSelectionChanged: (selection) {
-                  TapSoundService.playSelectionDing();
-                  _changeType(selection.first);
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _amountController,
-                autofocus: true,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+                    FilledButton.icon(
+                      onPressed: _save,
+                      icon: const Icon(Icons.check),
+                      label: const Text('保存账单'),
+                    ),
+                    IconButton(
+                      tooltip: '关闭',
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
                 ),
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: '金额',
-                  prefixText: '¥ ',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  final amount = double.tryParse(value?.trim() ?? '');
-                  if (amount == null || amount <= 0) return '请输入大于 0 的金额';
-                  if (amount > 999999999) return '金额超出范围';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  const Text(
-                    '分类',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const Spacer(),
-                  TextButton.icon(
-                    onPressed: () => _chooseOtherCategory(createCustom: true),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('自定义分类'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4,
-                  crossAxisSpacing: 6,
-                  mainAxisSpacing: 4,
-                  childAspectRatio: 0.9,
-                ),
-                itemCount: _categories.length + 1,
-                itemBuilder: (context, index) {
-                  if (index == _categories.length) {
-                    return Tooltip(
-                      message: '管理自定义分类',
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(14),
-                        onTap: _manageCustomCategories,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF5F5F5),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.settings_outlined,
-                                size: 24,
-                                color: Colors.grey.shade700,
-                              ),
-                              const SizedBox(height: 5),
-                              const Text('设置', style: TextStyle(fontSize: 11)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-                  final category = _categories[index];
-                  final isCustom = _customCategories.contains(category);
-                  final selected = _category == category;
-                  return Tooltip(
-                    message: isCustom ? '长按可移除自定义分类' : category,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      enableFeedback: false,
-                      onTap: () {
-                        TapSoundService.playSelectionDing();
-                        if (category == LedgerCategories.other) {
-                          _chooseOtherCategory();
-                        } else {
-                          setState(() => _category = category);
-                        }
-                      },
-                      onLongPress: isCustom
-                          ? () => _removeCustomCategory(category)
-                          : null,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? const Color(0xFFFFE28A)
-                              : const Color(0xFFF5F5F5),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: selected
-                                ? const Color(0xFFE3A900)
-                                : Colors.transparent,
-                            width: 1.4,
-                          ),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              LedgerCategories.icon(category),
-                              size: 24,
-                              color: LedgerCategories.color(category),
+                const SizedBox(height: 8),
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SegmentedButton<EntryType>(
+                          segments: const [
+                            ButtonSegment(
+                              value: EntryType.expense,
+                              label: Text('支出'),
+                              icon: Icon(Icons.north_east),
                             ),
-                            const SizedBox(height: 5),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 2,
-                              ),
-                              child: Text(
-                                category,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 11),
-                              ),
+                            ButtonSegment(
+                              value: EntryType.income,
+                              label: Text('收入'),
+                              icon: Icon(Icons.south_west),
+                            ),
+                          ],
+                          selected: {_type},
+                          style: SegmentedButton.styleFrom(
+                            enableFeedback: false,
+                          ),
+                          onSelectionChanged: (selection) {
+                            TapSoundService.playSelectionDing();
+                            _changeType(selection.first);
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _amountController,
+                          autofocus: true,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: '金额',
+                            prefixText: '¥ ',
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) {
+                            final amount = double.tryParse(value?.trim() ?? '');
+                            if (amount == null || amount <= 0) {
+                              return '请输入大于 0 的金额';
+                            }
+                            if (amount > 999999999) return '金额超出范围';
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.calendar_today_outlined),
+                          title: const Text('日期'),
+                          trailing: Text(_dateLabel(_date)),
+                          onTap: _chooseDate,
+                        ),
+                        TextFormField(
+                          controller: _noteController,
+                          textCapitalization: TextCapitalization.sentences,
+                          maxLength: 60,
+                          decoration: const InputDecoration(
+                            labelText: '备注（选填）',
+                            border: OutlineInputBorder(),
+                            counterText: '',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            const Text(
+                              '分类',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            const Spacer(),
+                            TextButton.icon(
+                              onPressed: () =>
+                                  _chooseOtherCategory(createCustom: true),
+                              icon: const Icon(Icons.add, size: 18),
+                              label: const Text('自定义分类'),
                             ),
                           ],
                         ),
-                      ),
+                        const SizedBox(height: 4),
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 4,
+                                crossAxisSpacing: 6,
+                                mainAxisSpacing: 4,
+                                childAspectRatio: 0.9,
+                              ),
+                          itemCount: _categories.length + 1,
+                          itemBuilder: (context, index) {
+                            if (index == _categories.length) {
+                              return Tooltip(
+                                message: '管理自定义分类',
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(14),
+                                  onTap: _manageCustomCategories,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF5F5F5),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.settings_outlined,
+                                          size: 24,
+                                          color: Colors.grey.shade700,
+                                        ),
+                                        const SizedBox(height: 5),
+                                        const Text(
+                                          '设置',
+                                          style: TextStyle(fontSize: 11),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            final category = _categories[index];
+                            final isCustom = _customCategories.contains(
+                              category,
+                            );
+                            final selected = _category == category;
+                            return Tooltip(
+                              message: isCustom ? '长按可移除自定义分类' : category,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                enableFeedback: false,
+                                onTap: () {
+                                  TapSoundService.playSelectionDing();
+                                  if (category == LedgerCategories.other) {
+                                    _chooseOtherCategory();
+                                  } else {
+                                    setState(() => _category = category);
+                                  }
+                                },
+                                onLongPress: isCustom
+                                    ? () => _removeCustomCategory(category)
+                                    : null,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: selected
+                                        ? const Color(0xFFFFE28A)
+                                        : const Color(0xFFF5F5F5),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: selected
+                                          ? const Color(0xFFE3A900)
+                                          : Colors.transparent,
+                                      width: 1.4,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        LedgerCategories.icon(category),
+                                        size: 24,
+                                        color: LedgerCategories.color(category),
+                                      ),
+                                      const SizedBox(height: 5),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                        ),
+                                        child: Text(
+                                          category,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 11),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.calendar_today_outlined),
-                title: const Text('日期'),
-                trailing: Text(_dateLabel(_date)),
-                onTap: _chooseDate,
-              ),
-              TextFormField(
-                controller: _noteController,
-                textCapitalization: TextCapitalization.sentences,
-                maxLength: 60,
-                decoration: const InputDecoration(
-                  labelText: '备注（选填）',
-                  border: OutlineInputBorder(),
-                  counterText: '',
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _save,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text('保存账单'),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -2162,4 +2119,113 @@ class _OtherCategoryChoice {
 
   final String category;
   final String note;
+}
+
+class _OtherCategoryDialog extends StatefulWidget {
+  const _OtherCategoryDialog({
+    required this.createCustom,
+    required this.initialCategory,
+    required this.initialNote,
+  });
+
+  final bool createCustom;
+  final String initialCategory;
+  final String initialNote;
+
+  @override
+  State<_OtherCategoryDialog> createState() => _OtherCategoryDialogState();
+}
+
+class _OtherCategoryDialogState extends State<_OtherCategoryDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _categoryController;
+  late final TextEditingController _noteController;
+
+  @override
+  void initState() {
+    super.initState();
+    _categoryController = TextEditingController(text: widget.initialCategory);
+    _noteController = TextEditingController(text: widget.initialNote);
+  }
+
+  @override
+  void dispose() {
+    _categoryController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  void _cancel() {
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    final name = _categoryController.text.trim();
+    final choice = _OtherCategoryChoice(
+      category: name.isEmpty ? LedgerCategories.other : name,
+      note: _noteController.text.trim(),
+    );
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop(choice);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.createCustom ? '添加自定义分类' : '其他分类'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _categoryController,
+                autofocus: widget.createCustom,
+                maxLength: 16,
+                decoration: InputDecoration(
+                  labelText: widget.createCustom ? '分类名称' : '自定义分类（可留空）',
+                  hintText: '例如：家庭聚餐',
+                  border: const OutlineInputBorder(),
+                  counterText: '',
+                ),
+                validator: (value) {
+                  final name = (value ?? '').trim();
+                  if (widget.createCustom && name.isEmpty) return '请输入分类名称';
+                  if (name.runes.length > 16) return '分类名称最多 16 个字符';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _noteController,
+                maxLength: 60,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: '备注（选填）',
+                  hintText: '例如：给家人买的水果',
+                  border: OutlineInputBorder(),
+                  counterText: '',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '自定义分类会保存在本机，之后记账时也能直接选择。',
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: _cancel, child: const Text('取消')),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(widget.createCustom ? '添加并选择' : '完成'),
+        ),
+      ],
+    );
+  }
 }
