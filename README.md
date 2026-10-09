@@ -85,4 +85,3 @@ MIT 许可证仅适用于本仓库贡献者拥有的代码，不包含 Pokémon 
 - [GitHub 登录与加密备份配置](docs/GITHUB_SYNC_SETUP.md)
 - [Android 正式版签名与 GitHub Release 发布](docs/ANDROID_RELEASE.md)
 - [MIT 许可证](LICENSE)
-
