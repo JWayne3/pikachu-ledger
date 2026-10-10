@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 
 abstract final class TapSoundService {
   static AudioPool? _recordPool;
@@ -13,7 +12,7 @@ abstract final class TapSoundService {
   static final _audioContext = AudioContext(
     android: AudioContextAndroid(
       contentType: AndroidContentType.sonification,
-      usageType: AndroidUsageType.assistanceSonification,
+      usageType: AndroidUsageType.media,
       audioFocus: AndroidAudioFocus.none,
     ),
   );
@@ -71,14 +70,10 @@ abstract final class TapSoundService {
     try {
       await initialize();
       final pool = _uiClickPool;
-      if (pool == null) {
-        await SystemSound.play(SystemSoundType.click);
-        return;
-      }
+      if (pool == null) return;
       await pool.start(volume: 0.7);
     } catch (error) {
       debugPrint('TapSoundService: UI click playback failed: $error');
-      await _playSystemClick();
     }
   }
 
@@ -86,22 +81,10 @@ abstract final class TapSoundService {
     try {
       await initialize();
       final pool = record ? _recordPool : _selectionPool;
-      if (pool == null) {
-        await _playSystemClick();
-        return;
-      }
+      if (pool == null) return;
       await pool.start(volume: record ? 0.72 : 0.48);
     } catch (error) {
       debugPrint('TapSoundService: ding playback failed: $error');
-      await _playSystemClick();
-    }
-  }
-
-  static Future<void> _playSystemClick() async {
-    try {
-      await SystemSound.play(SystemSoundType.click);
-    } catch (error) {
-      debugPrint('TapSoundService: system click playback failed: $error');
     }
   }
 }
